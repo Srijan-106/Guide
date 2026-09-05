@@ -27,4 +27,6 @@ failures and debugging, not just final results.
 This project was built following a structured review of 2024-2026 academic
 literature and existing open-source/commercial systems in the assistive
 technology space, to identify genuine, honest gaps rather than assuming novelty.
-Full research documentation available in `docs/`.
+
+## Development Log
+See day-by-day progress in `docs/devlog.md`.
