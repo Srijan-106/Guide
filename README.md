@@ -3,7 +3,7 @@
 A software-first AI accessibility assistant for blind and visually impaired users.
 
 ## Project Status
-
+-**In active development —**
 - **Day 0** — Research and planning phase completed. No functional code yet.
 - **Day 1** — Python virtual environment set up. GPU-accelerated PyTorch (CUDA 12.8) verified working with RTX 5060. No functional application code yet.
 
