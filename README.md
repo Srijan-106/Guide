@@ -3,7 +3,13 @@
 A software-first AI accessibility assistant for blind and visually impaired users.
 
 ## Project Status
-In active development — Day 0 (research and planning phase, no functional code yet).
+In active development — 
+Day 0 (research and planning phase, no functional code yet).
+Day 1 Python environment and GPU-accelerated,
+      PyTorch setup verified working. No functional application code yet.
+
+## Development Log
+See day-by-day progress in `docs/devlog.md`.
 
 ## Problem
 Blind and visually impaired individuals often lack affordable, real-time,
