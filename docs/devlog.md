@@ -97,6 +97,6 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
 **Problems encountered:**
 - First run failed due to a network interruption during the model
   download (KeyboardInterrupt) — resolved by simply retrying without
-  interrupting
+  interrupting.
 
 **Next goal:** Day 3 — Measure real-time FPS, test confidence thresholds, document at least one detection failure case.
