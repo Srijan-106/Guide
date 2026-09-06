@@ -3,9 +3,10 @@
 A software-first AI accessibility assistant for blind and visually impaired users.
 
 ## Project Status
--**In active development —**
+**In active development —**
 - **Day 0** — Research and planning phase completed. No functional code yet.
 - **Day 1** — Python virtual environment set up. GPU-accelerated PyTorch (CUDA 12.8) verified working with RTX 5060. No functional application code yet.
+- **Day 2** — First working object detection module built and tested on a live webcam feed using YOLOv8n, running on GPU.
 
 ## Development Log
 See full day-by-day progress in `docs/devlog.md`.

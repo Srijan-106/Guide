@@ -61,3 +61,42 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
   correct CUDA build before proceeding
 
 **Next goal:** Day 2 — first real object detection code using YOLOv8n.
+
+
+---
+
+## Day 2 — [6 sept]
+
+**Goal:** Write the first real object detection code and test it on a live webcam feed.
+
+**What was done:**
+- Created `src/detection/detect.py`
+- First version tested detection on a static sample image (bus.jpg),
+  confirming YOLOv8n correctly identified a bus and 3 people with
+  confidence scores, running on GPU (4.3ms inference time)
+- Rewrote the code to use a live webcam feed instead of a static image,
+  using an infinite loop (`while True`) combined with a `break` condition
+  triggered by pressing 'q'
+- Used Ultralytics' built-in `.plot()` method to automatically draw
+  bounding boxes and labels onto each frame
+- Organized project files: moved `yolov8n.pt` into `models/`, removed
+  the temporary test image
+- Committed and pushed the first real working application code
+
+**What was learned:**
+- The precise difference between confidence (a model's self-reported
+  certainty about one prediction) and accuracy (a measured correctness
+  rate against verified ground-truth data across many examples)
+- The difference between speed metrics (preprocess/inference/postprocess
+  timing) and correctness metrics — these are independent of each other
+- Why an infinite loop (`while True`) is necessary for continuous video
+  processing, and how `break` provides the only exit condition
+- How `cv2.VideoCapture`, `camera.read()`, and `cv2.imshow()` work together
+  to build a live video display loop
+
+**Problems encountered:**
+- First run failed due to a network interruption during the model
+  download (KeyboardInterrupt) — resolved by simply retrying without
+  interrupting
+
+**Next goal:** Day 3 — Measure real-time FPS, test confidence thresholds, document at least one detection failure case.
