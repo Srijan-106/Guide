@@ -30,7 +30,7 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
 
 ---
 
-## Day 1 — [today's date]
+## Day 1 — [6th sept]
 
 **Goal:** Set up an isolated Python virtual environment and verify GPU access.
 
