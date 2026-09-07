@@ -104,7 +104,7 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
 
 ---
 
-## Day 3 — [today's date]
+## Day 3 — [ 7 -sept]
 
 **Goal:** Measure real-time FPS, test confidence threshold tradeoffs, document a genuine detection failure case.
 
