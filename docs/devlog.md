@@ -100,3 +100,57 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
   interrupting.
 
 **Next goal:** Day 3 — Measure real-time FPS, test confidence thresholds, document at least one detection failure case.
+
+
+---
+
+## Day 3 — [today's date]
+
+**Goal:** Measure real-time FPS, test confidence threshold tradeoffs, document a genuine detection failure case.
+
+**What was done:**
+- Added live FPS measurement to `detect.py` using Python's `time` module,
+  calculating frame-to-frame processing speed rather than relying only on
+  the model's internal inference timing
+- Confirmed real-world end-to-end performance: approximately 30 FPS at
+  default settings, running fully on GPU
+- Tested two confidence thresholds (0.2 and 0.7) on identical surroundings
+  to observe the false-positive vs. missed-detection tradeoff directly
+- Identified and analyzed a real detection failure case from Day 2's testing
+
+**Experiment Log — Confidence Threshold Comparison**
+
+| Setting | conf = 0.2 | conf = 0.7 |
+|---|---|---|
+| FPS observed | 27 | 41 |
+| Detections shown | 4 (2 correct, 2 false positives) | 1 (correct) |
+| False positives | "person 0.27" (empty wall area), "person 0.24" (pile of clothes) | None observed |
+| Missed detections | None | Backpack/bed region not labeled at all |
+| Conclusion | Lower threshold catches more but introduces false positives; higher threshold is cleaner but risks missing ambiguous objects | |
+
+**Failure Case Analysis**
+
+- **What happened:** A backpack sitting on a bed was labeled "bed" (confidence
+  0.46-0.57) instead of being identified as a backpack, or correctly separating
+  the two objects.
+- **Likely cause:** The bounding box region was likely dominated visually by
+  the bedding/blanket pattern, causing the model to classify based on the
+  larger surrounding context rather than the smaller foreground object. This
+  may also reflect a general known limitation of single-pass detectors like
+  YOLO when handling overlapping or partially-occluded objects.
+- **Why this matters for the project:** For a blind user relying on this
+  system, a misidentified object like this could give inaccurate information
+  about their surroundings. This is a genuine limitation to be transparent
+  about in the project's documentation, not hidden.
+
+**What was learned:**
+- FPS measured end-to-end (capture + detection + drawing + display) differs
+  meaningfully from raw model inference time alone, and is the more honest
+  real-world performance metric
+- Confidence threshold is a genuine tradeoff, not a "more accurate = better"
+  setting — the right value depends on whether false positives or missed
+  detections are more costly for the specific use case
+- Real evaluation requires deliberately looking for failure cases, not just
+  showcasing successful detections
+
+**Next goal:** Day 4 — Begin OCR (Optical Character Recognition) for text reading.
