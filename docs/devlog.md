@@ -154,3 +154,92 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
   showcasing successful detections
 
 **Next goal:** Day 4 — Begin OCR (Optical Character Recognition) for text reading.
+
+
+---
+
+## Day 4 — [8 sept]
+
+**Goal:** Implement OCR (text reading from images) and achieve reliable
+real-world performance.
+
+**What was done:**
+- Installed Tesseract OCR engine (standalone C++ program, separate from Python)
+  and `pytesseract` as the Python bridge
+- Resolved a `TESSDATA_PREFIX` configuration issue where Tesseract's
+  compiled-in default path did not match the actual Windows installation
+- Built and tested OCR on a static screenshot (successful), then on live
+  webcam captures triggered by the space bar
+- Found Tesseract failed badly on real-world objects; investigated the
+  failure pattern through controlled testing
+- Switched to EasyOCR (neural-network-based OCR trained on real-world
+  photos rather than scanned documents) and re-tested identical objects
+- Resolved an OpenCV conflict caused by EasyOCR installing
+  `opencv-python-headless` alongside the standard `opencv-python`
+
+**Experiment Log — Tesseract vs EasyOCR (identical test objects)**
+
+| Test object | Conditions | Tesseract result | EasyOCR result |
+|---|---|---|---|
+| Saltwater bottle | Curved, high contrast, good lighting | "SALTWATER breeze" — correct | Correct |
+| BOLDFIT bottle | Curved, metallic, low contrast | "a c (a) je]" — garbage | "BOLDFIT" (conf 0.99) — correct |
+| Algorithms book | Angled, large stylized title font | Empty result — no text returned at all | "ALGORITHMS" (1.00), "INTRODUCTION TO" (0.75), "THIRD EDITION" (0.81), "CLIFFORD STEIN" (0.96) — correct |
+
+**Visual evidence:**
+
+Tesseract failing on the BOLDFIT bottle (metallic, curved, low contrast):
+
+![Tesseract failure on BOLDFIT bottle](images/day4_tesseract_boldfit_fail.png)
+
+EasyOCR reading the same bottle correctly:
+
+![EasyOCR success on BOLDFIT bottle](images/day4_easyocr_boldfit_success.png)
+
+Tesseract failing entirely on the angled book cover (returned no text at all):
+
+![Tesseract failure on book cover](images/day4_tesseract_book_fail.png)
+
+EasyOCR reading the same book cover correctly:
+
+![EasyOCR success on book cover](images/day4_easyocr_book_success.png)
+
+
+**Key finding:** All three objects that completely failed with Tesseract were
+read correctly by EasyOCR. The root cause was not curvature alone — the
+Saltwater bottle is also curved but worked with both engines — but rather
+Tesseract's fundamental design assumption of flat, scanned, document-style
+text. EasyOCR, trained on real-world photographs of text, handles curved
+surfaces, low contrast, glare, and stylized fonts substantially better.
+
+**Additional observation:** EasyOCR returns per-result confidence scores.
+Incorrect/garbage readings consistently carry very low confidence (0.00–0.05),
+while correct readings carry high confidence (0.75–1.00), meaning noise can
+be filtered by threshold — the same principle applied to object detection
+confidence on Day 3. Confidence values are being kept visible during
+development for diagnostic purposes rather than filtered out prematurely.
+
+**Problems encountered and resolved:**
+
+| Problem | Cause | Fix |
+|---|---|---|
+| `TesseractError: Failed loading language 'eng'` | Tesseract's compiled-in default `tessdata` path pointed to a Linux build path that doesn't exist on Windows | Explicitly set `os.environ["TESSDATA_PREFIX"]` to the real installation path |
+| `cv2.error: The function is not implemented` on `cv2.imshow()` | EasyOCR installed `opencv-python-headless` (built without GUI support) alongside the existing `opencv-python`, causing a conflict | Uninstalled the headless variant, then force-reinstalled `opencv-python` |
+| `ModuleNotFoundError: No module named 'cv2'` | Uninstalling the headless package also removed shared underlying files | `pip install --force-reinstall opencv-python` |
+
+**What was learned:**
+- Tesseract is a standalone external program; `pytesseract` is only a bridge,
+  not the engine itself — architecturally different from YOLO, which runs
+  natively inside Python via PyTorch
+- Classical OCR (Tesseract) and neural-network OCR (EasyOCR) have
+  fundamentally different robustness characteristics on real-world input
+- Diagnosing a failure correctly matters: the initial hypothesis (curvature
+  causes failure) was disproven by a counter-example (a curved bottle that
+  worked), leading to a more accurate conclusion about contrast, glare,
+  and font style being the controlling factors for Tesseract
+- Package dependency conflicts can silently break previously-working
+  functionality — the same OpenCV that worked fine on Days 2–3 broke purely
+  because a new package pulled in a conflicting variant
+
+**Next goal:** Day 5 — Text-to-speech: make OCR and object detection results
+speak aloud rather than only printing to terminal, making both features
+genuinely usable by the target user for the first time.
