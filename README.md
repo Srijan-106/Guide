@@ -8,6 +8,7 @@ A software-first AI accessibility assistant for blind and visually impaired user
 - **Day 1** — Python virtual environment set up. GPU-accelerated PyTorch (CUDA 12.8) verified working with RTX 5060. No functional application code yet.
 - **Day 2** — First working object detection module built and tested on a live webcam feed using YOLOv8n, running on GPU.
 - **Day 3** — Added real-time FPS measurement (~30 FPS confirmed end-to-end) and conducted a structured confidence-threshold experiment, documenting a genuine detection failure case for honest evaluation.
+- **Day 4** — Implemented OCR text reading. Tested Tesseract, identified real-world reliability failures on curved, low-contrast, and stylized text, then switched to EasyOCR — verified through direct before/after comparison that all previously-failing test objects now read correctly.
 
 ## Development Log
 See full day-by-day progress in `docs/devlog.md`.
