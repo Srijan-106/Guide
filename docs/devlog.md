@@ -243,3 +243,134 @@ development for diagnostic purposes rather than filtered out prematurely.
 **Next goal:** Day 5 — Text-to-speech: make OCR and object detection results
 speak aloud rather than only printing to terminal, making both features
 genuinely usable by the target user for the first time.
+
+
+---
+
+## Day 5 — [9 sept]
+
+**Goal:** Add text-to-speech output so that OCR and object detection results
+are spoken aloud rather than only printed to a terminal — making the project
+genuinely usable by its target user (blind and visually impaired people) for
+the first time.
+
+**Why this matters:** Every feature built before today printed results to a
+terminal window. For a blind user, terminal output is useless. Today is the
+first day the project produces output its actual audience can perceive.
+
+**What was done:**
+- Installed `pyttsx3`, an offline text-to-speech library that drives SAPI5,
+  the speech engine built into Windows
+- Built a dedicated, swappable speech module (`src/speech/tts.py`) so that
+  changing the TTS engine later requires modifying one file rather than
+  every file that produces output
+- Integrated speech into OCR: readings above 0.5 confidence are spoken;
+  lower-confidence garbage is still printed for diagnostics but not spoken
+- Added explicit audible feedback when no text is found ("No readable text
+  found"), since silence is ambiguous for a blind user
+- Integrated speech into object detection using a change-detection design
+  with flicker tolerance
+- Diagnosed and resolved four separate speech failures (documented below)
+
+**Design decision — why offline TTS:** `pyttsx3` was chosen over cloud
+services (ElevenLabs, Google TTS, Azure) despite lower voice quality,
+because it requires no internet connection, no API keys, and no per-use
+cost. A blind user should not need connectivity to know what is in front
+of them, and images of their private surroundings should not be sent to a
+remote server. This aligns with the offline/privacy-first gap identified
+during Day 0 research. The speech module is deliberately isolated so a
+higher-quality engine (e.g. Piper, which is also offline and supports
+Hindi) can replace it later without touching any other file.
+
+**Design decision — change detection for object announcements:** Object
+detection runs continuously at ~30 FPS. Announcing every detection every
+frame would be unusable. Instead, the system tracks which objects are
+currently believed present and announces only newly-appeared objects.
+An object must be undetected for 60 consecutive frames (~2 seconds)
+before being forgotten and becoming eligible for re-announcement. This
+threshold was chosen deliberately: detection flicker typically lasts 1-3
+frames, while a genuine removal-and-return takes 1-3 seconds, so the
+threshold sits comfortably in the gap between them.
+
+**Errors encountered and resolved:**
+
+**Error 1 — Only the first announcement ever spoke**
+- *Symptom:* First `speak()` call worked; all subsequent calls printed
+  normally but produced no audio, with no error raised.
+- *Diagnosis:* Reproduced in isolation outside the project with a two-word
+  test, confirming it was a library behaviour rather than an integration bug.
+- *Cause:* After `runAndWait()` completes, pyttsx3's internal event loop
+  terminates. The engine still accepts `say()` calls without error, but no
+  active loop remains to process them — a silent failure.
+- *Fix attempted:* Create a fresh engine per utterance.
+
+**Error 2 — `RuntimeError: run loop already started`**
+- *Symptom:* Crashes in worker threads when multiple objects appeared close
+  together.
+- *Cause:* Spawning one thread per announcement meant multiple pyttsx3
+  engines ran concurrently. SAPI5 cannot handle simultaneous speech engines.
+- *Fix:* Replaced per-announcement threads with a single permanent worker
+  thread consuming from a `queue.Queue`, guaranteeing announcements are
+  processed strictly one at a time.
+
+**Error 3 — Threaded speech silently failed regardless of engine strategy**
+- *Symptom:* With the queue design, no crashes occurred and diagnostic
+  logging confirmed each announcement completed successfully — yet only the
+  first produced audio.
+- *Diagnosis:* Added `[worker] speaking:` / `[worker] finished:` logging to
+  confirm the worker was completing, not hanging. Separately verified via an
+  isolated four-word test that repeated create/speak/destroy cycles work
+  correctly *on the main thread*.
+- *Conclusion:* pyttsx3/SAPI5 does not work reliably from a background
+  thread on Windows, most likely due to COM thread-affinity requirements.
+  Both persistent-engine and fresh-engine strategies failed identically
+  inside a thread while both worked on the main thread.
+- *Fix:* Abandoned threading entirely. Switched to pyttsx3's non-blocking
+  mode: `engine.startLoop(False)` starts the loop without blocking, and
+  `engine.iterate()` processes a small slice of pending speech work each
+  time it is called. Calling `iterate()` from within the video loop lets
+  speech progress incrementally without ever freezing the loop.
+
+**Error 4 — Speech lagged behind detections and queued up**
+- *Symptom:* Announcements were audibly delayed, and a backlog built up when
+  several objects appeared at once.
+- *Cause:* `iterate()` processes only a small slice of work per call. Calling
+  it once per frame was insufficient to keep pace.
+- *Fix:* Called `iterate()` five times per frame instead of once. Five was
+  chosen as a balance — enough to clear the queue promptly, not so many that
+  the video loop slows down.
+
+**Known limitation — repeated announcements for unstable detections:**
+Some objects (notably "bed" in testing) are announced repeatedly because
+YOLO's confidence in them genuinely fluctuates across frames due to angle,
+partial occlusion, and lighting. Increasing `FRAMES_BEFORE_GONE` from 20 to
+60 reduced this substantially but did not eliminate it. This is a detection
+stability issue rather than a speech or tracking-logic issue. Possible
+future mitigations: raising the detection confidence threshold, increasing
+the forget threshold further, or adding a per-object cooldown period.
+
+**Known limitation — OCR reading order:** EasyOCR returns text regions in
+its own internal processing order, not natural human reading order. When a
+book cover is read aloud, fragments are announced in an arbitrary sequence
+rather than title-first as a sighted reader would perceive. Raw OCR provides
+text but not visual hierarchy or reading order. Possible future approaches:
+sorting results by bounding-box position (top-to-bottom, left-to-right),
+sorting by text size, or using a language model to organise fragments
+meaningfully.
+
+**What was learned:**
+- Isolating a bug outside the main program is often the fastest route to a
+  correct diagnosis — the two-word and four-word tests each resolved
+  ambiguity immediately
+- Silent failures are harder than crashes: Errors 1 and 3 raised no
+  exceptions and required deliberate diagnostic logging to locate
+- Solving one problem can create another: threading fixed the video-freezing
+  issue but introduced concurrency crashes, which in turn revealed a
+  platform-level threading limitation
+- Accessibility design differs from ordinary UI design — silence is
+  ambiguous for a blind user, so explicit negative feedback ("no text found")
+  is necessary, not optional
+
+**Next goal:** Day 6 — Integration: combine object detection and OCR into a
+single application, so both features work together rather than as separate
+scripts.
