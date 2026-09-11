@@ -361,15 +361,15 @@ meaningfully.
 **What was learned:**
 - Isolating a bug outside the main program is often the fastest route to a
   correct diagnosis — the two-word and four-word tests each resolved
-  ambiguity immediately
+  ambiguity immediately.
 - Silent failures are harder than crashes: Errors 1 and 3 raised no
-  exceptions and required deliberate diagnostic logging to locate
+  exceptions and required deliberate diagnostic logging to locate.
 - Solving one problem can create another: threading fixed the video-freezing
   issue but introduced concurrency crashes, which in turn revealed a
-  platform-level threading limitation
+  platform-level threading limitation.
 - Accessibility design differs from ordinary UI design — silence is
   ambiguous for a blind user, so explicit negative feedback ("no text found")
-  is necessary, not optional
+  is necessary, not optional.
 
 **Next goal:** Day 6 — Integration: combine object detection and OCR into a
 single application, so both features work together rather than as separate
