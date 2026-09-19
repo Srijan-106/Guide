@@ -6,12 +6,14 @@ from ultralytics import YOLO
 sys.path.insert(0, "src")
 from speech.tts import Speaker
 
-model = YOLO("models/yolov8n.pt")
+#model = YOLO("models/yolov8n.pt")
+#model = YOLO("models/yolov8s-oiv7.pt")
+model = YOLO("models/yolo26n.pt")
 speaker = Speaker()
 
 camera = cv2.VideoCapture(0)
 
-FRAMES_BEFORE_GONE = 60
+FRAMES_BEFORE_GONE = 50
 
 currently_present = set()
 missing_counts = {}

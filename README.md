@@ -38,5 +38,12 @@ This project was built following a structured review of 2024-2026 academic
 literature and existing open-source/commercial systems in the assistive
 technology space, to identify genuine, honest gaps rather than assuming novelty.
 
+
+**Note:** `src/ocr/ocr.py` is a deprecated Tesseract implementation, kept
+for reference. The active OCR module is `src/ocr/ocr_easy.py`, which uses
+EasyOCR. See `docs/devlog.md` (Day 4) for the comparison that motivated
+the switch.
+
+
 ## Development Log
 See day-by-day progress in `docs/devlog.md`.

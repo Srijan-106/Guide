@@ -1,3 +1,18 @@
+
+"""
+DEPRECATED - Tesseract-based OCR. Kept for reference only.
+
+This was the first OCR implementation (Day 4). It was replaced by
+ocr_easy.py after testing showed Tesseract failed on curved surfaces,
+metallic/low-contrast labels, and angled stylized text - all of which
+EasyOCR handled correctly. See docs/devlog.md (Day 4) for the full
+comparison and results.
+
+This file is NOT part of the working application and requires a
+separate Tesseract installation to run. The path below is specific to
+the original development machine and will need changing to run elsewhere.
+"""
+
 import cv2
 import pytesseract
 import os
