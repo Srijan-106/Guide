@@ -10,6 +10,7 @@ A software-first AI accessibility assistant for blind and visually impaired user
 - **Day 3** — Added real-time FPS measurement (~30 FPS confirmed end-to-end) and conducted a structured confidence-threshold experiment, documenting a genuine detection failure case for honest evaluation.
 - **Day 4** — Implemented OCR text reading. Tested Tesseract, identified real-world reliability failures on curved, low-contrast, and stylized text, then switched to EasyOCR — verified through direct before/after comparison that all previously-failing test objects now read correctly.
 - **Day 5** — Added offline text-to-speech output for both OCR and object detection, making results audible rather than terminal-only. Implemented change-detection with flicker tolerance so objects are announced on appearance rather than every frame, and resolved four distinct speech-engine failures including a Windows thread-affinity limitation.
+- **Day 5 (Part A)** — Upgraded to YOLO26; documented two failed experiments proving vocabulary size does not fix missed detections; replaced pyttsx3 with edge-tts after five distinct failures; improved OCR filtering with length-aware confidence thresholds; fixed portability issues preventing the project running on other machines.
 
 
 ## Development Log

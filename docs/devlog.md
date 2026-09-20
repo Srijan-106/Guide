@@ -374,3 +374,145 @@ meaningfully.
 **Next goal:** Day 6 — Integration: combine object detection and OCR into a
 single application, so both features work together rather than as separate
 scripts.
+
+
+---
+
+## Day 5 — Part A — [today's date]
+
+**Goal:** Resolve the outstanding speech failures from Day 5, upgrade the
+detection model, and fix portability issues that would prevent the project
+running on another machine.
+
+### 1. Detection model upgrade — YOLOv8 to YOLO26
+
+The project had been using YOLOv8 (2023). YOLO26, released January 2026,
+is the current Ultralytics release — three generations newer. It uses
+two-stage Objects365 pretraining followed by COCO fine-tuning, and reports
+40.9-57.5 mAP on COCO at 1.7-11.8 ms latency.
+
+Switched to `models/yolo26n.pt`. The API is identical, so this was a
+one-line change.
+
+### 2. Experiment — does a larger vocabulary fix missed objects?
+
+A recurring problem: a pen is detected as "toothbrush", a protein shaker
+as "remote". The hypothesis was that COCO's 80 classes are too narrow.
+
+**Test 1 — YOLOv8s-oiv7 (Open Images V7, 600 classes)**
+
+| Observation | Result |
+|---|---|
+| Pen detection | Not detected at all |
+| Label quality | Redundant overlapping labels - "Man", "Person" and "Human face" all announced for one individual |
+| Announcement noise | Substantially worse; constant repetition |
+| FPS | 22-51 (variable, often slower than COCO) |
+
+**Test 2 — YOLO26n (COCO, newer architecture)**
+
+| Observation | Result |
+|---|---|
+| Pen detection | Still "toothbrush", at higher confidence (0.75) |
+| False positives | "tie", "refrigerator", "baseball bat" announced with none present |
+| FPS | ~32 |
+
+**Conclusion:** neither a broader vocabulary nor a newer architecture
+solves missed or misidentified objects. Open Images contains a "Pen"
+class and still failed to detect one. The problem is detection
+difficulty for small, thin, hand-held objects, not vocabulary size.
+
+**Decision:** retained YOLO26n as the base model. The only remaining fix
+for domain-specific objects is fine-tuning on custom labelled data.
+
+### 3. OCR spacebar unresponsiveness — three separate causes
+
+**Cause 1:** `cv2.waitKey(5)` had been introduced earlier to reduce CPU
+load. This narrowed the window during which the program listens for a
+keypress to 5 milliseconds per loop, causing most presses to be missed
+entirely. Reverted to `waitKey(1)`.
+
+**Cause 2:** window focus. `cv2.waitKey()` only receives keystrokes when
+the OpenCV window is the active window. Presses were going to Chrome and
+VS Code instead. Confirmed by adding a diagnostic print of the raw key
+code - no key events appeared until the video window was clicked.
+
+**Cause 3:** occasional empty OCR results were not a bug but blurry
+frames, confirmed by saving the captured frame to disk for inspection.
+
+### 4. pyttsx3 replaced with edge-tts
+
+**Fifth pyttsx3 failure:** after the first announcement, the program hung
+completely - unresponsive even to the quit key. Confirmed by disabling
+all speech calls and running nine consecutive OCR captures without any
+hang, isolating pyttsx3 as the cause.
+
+**Decision to switch engines.** Five distinct failures on one library
+(engine reuse, thread crashes, COM thread-affinity, processing backlog,
+and now a hang) indicated the library was the wrong tool rather than
+repeatedly misused.
+
+**Options evaluated:**
+
+| Engine | Internet | Quality | Notes |
+|---|---|---|---|
+| Piper | Not required | Good | Offline, but requires manual binary and voice model installation |
+| Coqui XTTS | Not required | Very good | Heavy; company shut down 2024, community-maintained |
+| edge-tts | Required | Very good | Free, no API key, one-line install, native Hindi support |
+| gTTS | Required | Good | Simpler but lower quality |
+| Google Cloud / ElevenLabs | Required | Very good | Paid, require API keys |
+
+**Chosen: edge-tts.** Reasoning: the project is intended to be cloned and
+run by others, and a single `pip install` line is substantially easier to
+distribute than manual binary installation. Voice quality is materially
+better, which matters for a tool whose output is listened to constantly.
+Hindi support is included natively, addressing a previously deferred
+requirement.
+
+**Trade-off accepted and documented:** speech now requires an internet
+connection. Offline TTS is noted as a possible future addition.
+
+**New architecture:** `edge_tts` generates an MP3 file; `pygame` plays it.
+A single background worker thread processes a queue, playing one
+announcement to completion before starting the next. This avoids the
+entire class of problem encountered with pyttsx3 - there is no event loop
+to manage, no COM objects, and no thread-affinity constraints.
+
+### 5. OCR output filtering improvements
+
+**Problem identified:** a flat 0.5 confidence threshold systematically
+discarded the most useful readings. On a skincare product, "Glycolic Acid
+Cream 6% w/w" scored 0.35 and was filtered out, while the less
+informative fragment "Glyco 6" scored 0.80 and was spoken.
+
+**Cause:** EasyOCR's confidence reflects certainty about the entire
+string. Longer text has more characters that could be misread, so scores
+fall - meaning a flat threshold penalises exactly the most informative
+results.
+
+**Fix:** length-aware thresholds.
+
+| Text length | Confidence required |
+|---|---|
+| 12+ characters | 0.25 |
+| 5-11 characters | 0.40 |
+| Under 5 characters | 0.75 |
+
+Additionally: results sorted by confidence, a minimum length of 3
+characters enforced, and announcements capped at 6 items, since a
+cluttered page produced over 130 fragments in one capture.
+
+**Capture resolution raised** from 640x480 to 1280x720, which visibly
+improved character accuracy.
+
+### 6. Portability fixes
+
+Two issues would have prevented the project running on any other machine:
+
+| Problem | Fix |
+|---|---|
+| `requirements.txt` pinned a PyTorch nightly build (`torch==2.12.0.dev20260408+cu128`) not available on PyPI | Removed the pin entirely; Ultralytics installs a compatible version automatically. RTX 50-series users directed to `docs/gpu-setup.md` |
+| `requirements.txt` listed ~30 transitive sub-dependencies from `pip freeze` | Reduced to 6 direct dependencies; pip resolves the rest, avoiding version conflicts |
+| `src/ocr/ocr.py` contained a hardcoded Tesseract path specific to the development machine | Marked deprecated with an explanatory docstring; retained for reference only |
+
+Created `docs/gpu-setup.md` documenting the RTX 50-series `sm_120`
+inc
