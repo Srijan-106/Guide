@@ -1,3 +1,15 @@
+"""
+DEPRECATED - standalone object detection. Kept for reference only.
+
+This was the first working detection implementation (Days 2-5). Its
+functionality is now part of src/assistant/main.py, which combines
+detection and OCR into a single application with mode switching.
+
+Kept because it documents the development of the change-detection and
+flicker-tolerance logic. Not part of the working application.
+"""
+
+
 import sys
 import cv2
 import time

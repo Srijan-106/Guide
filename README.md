@@ -11,7 +11,8 @@ A software-first AI accessibility assistant for blind and visually impaired user
 - **Day 4** — Implemented OCR text reading. Tested Tesseract, identified real-world reliability failures on curved, low-contrast, and stylized text, then switched to EasyOCR — verified through direct before/after comparison that all previously-failing test objects now read correctly.
 - **Day 5** — Added offline text-to-speech output for both OCR and object detection, making results audible rather than terminal-only. Implemented change-detection with flicker tolerance so objects are announced on appearance rather than every frame, and resolved four distinct speech-engine failures including a Windows thread-affinity limitation.
 - **Day 5 (Part A)** — Upgraded to YOLO26; documented two failed experiments proving vocabulary size does not fix missed detections; replaced pyttsx3 with edge-tts after five distinct failures; improved OCR filtering with length-aware confidence thresholds; fixed portability issues preventing the project running on other machines.
-
+- **Day 6** — Integrated detection and OCR into a single application with mode switching, and fixed OCR reading order by sorting results on bounding-box position rather than detection order.
+- **Day 6 (Part A)** — Added describe, identify and repeat commands; upgraded to a YOLO26 model pretrained on Objects365 (365 classes), which detects everyday objects such as glasses, bracelets and pillows that COCO's 80-class vocabulary cannot.
 
 ## Development Log
 See full day-by-day progress in `docs/devlog.md`.

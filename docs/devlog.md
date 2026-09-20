@@ -378,7 +378,7 @@ scripts.
 
 ---
 
-## Day 5 — Part A — [today's date]
+## Day 5 — Part A — [18 sept]
 
 **Goal:** Resolve the outstanding speech failures from Day 5, upgrade the
 detection model, and fix portability issues that would prevent the project
@@ -516,3 +516,170 @@ Two issues would have prevented the project running on any other machine:
 
 Created `docs/gpu-setup.md` documenting the RTX 50-series `sm_120`
 inc
+
+
+
+---
+
+## Day 6 — [20 sept]
+
+**Goal:** Combine object detection and OCR into a single application, so both features work together rather than as separate scripts that cannot run simultaneously.
+
+**The problem being solved:** detection and OCR each existed as a standalone program, and both opened the camera. Only one could run at a time. A user could not point at a shelf and get both "bottle detected" and the label read aloud without quitting one program and starting another. Both files also contained duplicated camera, speech and display-loop logic, meaning a bug fixed in one still existed in the other.
+
+### 1. Single application
+
+Created `src/assistant/main.py`, which owns the camera, owns one Speaker, runs detection every frame, and runs OCR on demand. Existing modules (`src/speech/tts.py`) are imported rather than duplicated.
+
+Settings were grouped as named constants at the top of the file, and the main loop's logic moved into named functions (`read_text_from_frame`, `track_objects`), so the loop reads as a sequence of steps rather than a wall of logic.
+
+A `try`/`finally` block was added around the main loop, guaranteeing the camera is released and audio shut down even if something crashes.
+
+**One implementation detail worth noting:** OCR is run on the clean `frame`, not on `annotated_frame`. The annotated version has detection boxes and labels drawn over it, which would interfere with text recognition.
+
+### 2. Mode switching (M key)
+
+The first working version ran both features simultaneously. Testing showed object announcements interrupting OCR readings, which was confusing in practice.
+
+The underlying insight: the two features serve different intentions. Detection is passive ambient awareness ("what is around me"). OCR is deliberate inquiry ("what does this say"). Ambient chatter interrupting a deliberate reading is the wrong model for how the tool is actually used.
+
+| Mode | Behaviour |
+|---|---|
+| Ambient (default) | Detection announces newly-appeared objects. OCR inactive. |
+| Reading | Detection announcements silenced. SPACE reads text aloud. |
+
+Detection tracking continues to run in both modes, with only the announcements silenced. If tracking stopped during reading mode, switching back would produce a burst of re-announcements for objects that had been in view the whole time.
+
+Mode changes are announced aloud, since the user cannot see the on-screen indicator. Pressing SPACE in ambient mode says "Switch to reading mode first" rather than failing silently — silence would be ambiguous.
+
+### 3. OCR reading order fixed
+
+The limitation identified on Day 5 and carried forward through Day 5 Part A was resolved.
+
+**Problem:** EasyOCR returns text regions in its own internal detection order, not human reading order. The code then sorted results by confidence for filtering purposes, which scrambled the order further. Individually correct words were announced in a meaningless sequence.
+
+**Before:**
+
+    USA, Edition, Global, Silberschatzs, OPERATING, SYSTEM, CONCEPTS, Jillegal, Fon Sala n
+
+**After:**
+
+    Edition, Silberschatzs, OPERATING, SYSTEM, CONCEPTS
+
+**Method:** filter by confidence first, then sort the surviving results by bounding-box position — top to bottom, then left to right. Vertical position is rounded into 30-pixel bands so that words on the same visual line group together rather than being split apart by small height differences.
+
+```python
+def reading_order(result):
+    box = result[0]
+    top = min(point[1] for point in box)
+    left = min(point[0] for point in box)
+    return (round(top / 30), left)
+```
+
+The bounding-box coordinates required for this were already returned by EasyOCR on every result but had simply been unused since Day 4.
+
+### Measured performance
+
+31-43 FPS with both models loaded, at 1280x720 capture resolution.
+
+### Known limitations at end of Day 6
+
+- OCR blocks the main loop for 1-2 seconds during a capture, freezing the video. Acceptable for a user-triggered action, but noticeable.
+- Object labels remain unreliable for specific products (a shaker bottle detected as "remote", a cream tube as "tie") due to COCO's 80-class vocabulary.
+
+**Next goal:** Day 6 Part A — usability features and a model vocabulary upgrade.
+
+---
+
+
+
+## Day 6 Part A — [20 sept]
+
+**Goal:** Add usability features that a genuinely integrated application needs, and address the object-vocabulary limitation carried over from Day 6.
+
+### 1. Repeat last announcement (R key)
+
+**Problem:** audio is transient. A user who misses an announcement — because of background noise, or simply not listening at that moment — had no way to hear it again short of physically moving the object out of frame and back in to re-trigger detection. Sighted people re-read things constantly without thinking about it; this restores that ability.
+
+**Implementation:** a `say()` wrapper replaced direct `speaker.speak()` calls throughout the application, storing each announcement before speaking it.
+
+```python
+def say(text):
+    """Speak text and remember it, so the R key can repeat it."""
+    global last_announcement
+    if not text or not text.strip():
+        return
+    last_announcement = text
+    speaker.speak(text)
+```
+
+One function, one place to change — every announcement is remembered automatically rather than requiring the memory to be updated at each call site. The R key itself calls `speaker.speak()` directly rather than `say()`, so repeating does not overwrite the memory with itself.
+
+### 2. Describe everything visible (D key)
+
+**Problem:** detection announces only *changes*. A user entering a room hears a burst of announcements in the first few seconds, then silence. Thirty seconds later there was no way to ask "what is here?"
+
+**Implementation:** speaks everything currently in `currently_present` — state the tracking logic already maintained — as a single summary.
+
+    "I see: chair, glasses, person, pillow, slippers"
+
+This bridges passive and active use: ambient mode tells the user when things change, D tells them what *is*.
+
+### 3. Deprecating superseded files
+
+`src/detection/detect.py` and `src/ocr/ocr_easy.py` were superseded by `main.py`. Leaving three overlapping programs in the repository would confuse anyone reading it, and the older files contain duplicated logic that would drift out of sync.
+
+Both were marked deprecated with docstrings explaining what replaced them and why they were kept, rather than deleted — the devlog references them heavily when documenting Days 2-5, and deleting them would leave that documentation pointing at nothing.
+
+### 4. Combined identify (I key)
+
+**The idea:** neither detection nor OCR alone is complete. Detection gives a generic category ("bottle"). OCR gives specific content ("Glycolic Acid Cream 6%"). Together they describe an object usefully.
+
+**The design question this raised:** what if the two disagree? Earlier testing had detection labelling a shaker bottle "remote" and a cream tube "tie", while OCR read both correctly. Announcing "I see a tie. It says Glycolic Acid Cream" would be actively misleading to someone who cannot see the object to check.
+
+**Decision:** where text is found, the object label is deliberately omitted. The unreliable source is only used when the reliable one produces nothing.
+
+```python
+if words:
+    say("It says: " + ", ".join(words))
+elif detected_now:
+    say("I see " + objects[0] + ", but no readable text")
+else:
+    say("I cannot identify anything")
+```
+
+### 5. On-screen controls
+
+The six control keys are now drawn below the mode indicator, so they are visible without referring to the terminal. Drawn line by line in a loop, since OpenCV has no multi-line text support.
+
+### 6. Model upgrade — COCO to Objects365
+
+**Context:** three separate models had failed to correctly identify everyday objects outside COCO's 80 classes, establishing vocabulary as a genuine constraint rather than an assumption.
+
+Ultralytics publishes YOLO26 models pretrained on Objects365v1 — 365 classes across 1.74 million training images. These are the same weights the COCO models were fine-tuned from, so the training quality is proven.
+
+**Experiment result:**
+
+| Object | COCO (yolo26m) | Objects365 (yolo26m-objv1-150) |
+|---|---|---|
+| Glasses | Not a class | Detected, 0.91-0.92 |
+| Bracelet | Not a class | Detected, 0.76 |
+| Pillow | Not a class | Detected |
+| Slippers | Not a class | Detected |
+| Person | Detected | Detected, 0.93-0.96 (higher confidence) |
+| FPS | 31-43 | 34-35 (no meaningful cost) |
+
+**Critically, no redundant labels.** This was precisely what made Open Images V7 unusable on Day 5 Part A — it announced "Man", "Person" and "Human face" for a single individual. Objects365's taxonomy is better curated, producing one label per object.
+
+**Why this succeeded where Open Images failed:** Objects365 shares YOLO26's own training lineage, rather than being a separately-trained model of different provenance and quality.
+
+`yolov8s-oiv7.pt` was deleted, since the Day 5 Part A experiment concluded it was worse on every measure and there is no scenario in which it would be loaded again.
+
+### Known limitations carried forward
+
+- OCR still blocks the loop for 1-2 seconds during a capture.
+- Objects at the frame edge (pillow, slippers) still flicker in and out despite `FRAMES_BEFORE_GONE = 150`. This is detection instability rather than a tracking-logic fault.
+- No error handling. If the camera disconnects or OCR fails, the program crashes — and a blind user would simply hear silence with no explanation.
+- The I key was built but not yet tested on a real product label.
+
+**Next goal:** Day 7 — [to be decided at start of session]

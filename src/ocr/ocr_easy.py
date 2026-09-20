@@ -1,3 +1,15 @@
+"""
+DEPRECATED - standalone OCR. Kept for reference only.
+
+This was the EasyOCR implementation built on Day 4 and extended with
+speech on Day 5. Its functionality is now part of src/assistant/main.py.
+
+Kept because it documents the Tesseract-to-EasyOCR migration and the
+development of the confidence-filtering approach. Not part of the
+working application.
+"""
+
+
 import sys
 import cv2
 import easyocr
