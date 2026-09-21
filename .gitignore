@@ -7,3 +7,5 @@ Thumbs.db
 data/
 /weights/
 mobileclip*.ts
+*.cache
+runs/
