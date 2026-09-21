@@ -45,6 +45,7 @@ from speech.tts import Speaker
 DETECTION_MODEL = "models/yolo26m-objv1-150.pt"
 DETECTION_CONFIDENCE = 0.7
 
+
 # How many consecutive frames an object must be missing before it bis
 # forgotten and becomes eligible to be announced again.
 FRAMES_BEFORE_GONE = 180
