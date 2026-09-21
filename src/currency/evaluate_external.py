@@ -8,6 +8,11 @@ backgrounds. That shows the model handles unseen photos from that source,
 but not whether it generalises to notes photographed elsewhere. This
 script tests exactly that.
 
+It saves two files:
+  - external_misclassified.csv : only the wrong predictions, for inspection
+  - external_predictions.csv   : every prediction with its confidence, used
+                                 to choose a confidence threshold
+
 The external dataset is for testing only. It must never be used for
 training, or it can no longer measure generalisation.
 """
@@ -25,6 +30,7 @@ from ultralytics import YOLO
 MODEL_PATH = r"D:\GUIDE\experiments\currency_v2\weights\best.pt"
 EXTERNAL_DATA = Path(r"D:\currenc test\Datasets")
 MISCLASSIFIED_CSV = Path(r"D:\GUIDE\experiments\currency_v2\external_misclassified.csv")
+ALL_PREDICTIONS_CSV = Path(r"D:\GUIDE\experiments\currency_v2\external_predictions.csv")
 
 
 # The external folders are named "10", "100"... while the model's classes
@@ -47,6 +53,7 @@ def main():
     correct = defaultdict(int)
     confusion = defaultdict(int)      # (true, predicted) -> count
     misclassified = []
+    all_predictions = []
 
     folders = [f for f in EXTERNAL_DATA.iterdir() if f.is_dir()]
     folders.sort(key=lambda f: int(f.name))
@@ -61,6 +68,11 @@ def main():
                                     stream=True, verbose=False):
             predicted = model.names[result.probs.top1]
             confidence = float(result.probs.top1conf)
+
+            # Keep every prediction, right or wrong, for threshold analysis
+            all_predictions.append(
+                (result.path, true_class, predicted, f"{confidence:.4f}")
+            )
 
             totals[true_class] += 1
             confusion[(true_class, predicted)] += 1
@@ -113,6 +125,15 @@ def main():
 
     print(f"\n{len(misclassified)} misclassified images listed in:")
     print(f"  {MISCLASSIFIED_CSV}")
+
+    # --- Save every prediction, for choosing a confidence threshold ---
+    with open(ALL_PREDICTIONS_CSV, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["file", "true", "predicted", "confidence"])
+        writer.writerows(all_predictions)
+
+    print(f"All {len(all_predictions)} predictions saved to:")
+    print(f"  {ALL_PREDICTIONS_CSV}")
 
 
 if __name__ == "__main__":
