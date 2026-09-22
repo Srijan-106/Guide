@@ -13,7 +13,7 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
 
 - Installed Git and configured it for Windows
 - Cloned the repository locally
-- Created project folder structure (`src/detection`, `src/ocr`, `src/currency`,
+- Created project folder structure (`src/detection`, `src/ocr`,
   `src/speech`, `src/assistant`, `models/`, `experiments/`, `docs/`)
 - Created `.gitignore`
 - Wrote initial `README.md`
@@ -691,152 +691,61 @@ Ultralytics publishes YOLO26 models pretrained on Objects365v1 — 365 classes a
 - No error handling. If the camera disconnects or OCR fails, the program crashes — and a blind user would simply hear silence with no explanation.
 - The I key was built but not yet tested on a real product label.
 
-**Next goal:** Day 7 — Currency recognition: train and evaluate a classifier for Indian banknotes.
-
+**Next goal:** Day 7 — Environment and repository maintenance.
 
 ---
 
-## Day 7 — [20–21 sept]
+## Day 7 — [20–22 sept]
 
-**Goal:** Build currency recognition (Stage 8), and move from using pretrained models to training one.
+**Goal:** Resolve a Windows security block that stopped the project from running, correct the PyTorch setup chosen on Day 1, and tidy the repository.
 
-**Why this matters:** every model used until now was pretrained by someone else. This is the first model trained, evaluated and analysed within this project.
+### 1. Windows Smart App Control blocked PyTorch
 
-### 1. Dataset and approach
-
-The dataset contains folders of images per denomination (`Rs.10` ... `Rs.2000`) with no bounding-box labels - a **classification** dataset, not a detection one. YOLO detection cannot train on it directly.
-
-**Decision: classification rather than detection.** It works with the data as-is, and matches the real use case: a user holds a note up to the camera and asks what it is, rather than scanning a room for money.
-
-Rs.2000 was excluded, since it has been withdrawn from circulation. Six classes remain.
-
-### 2. First training run (v1)
-
-The first attempt (`yolo26s-cls`, batch 32) ran out of GPU memory. Ultralytics retried at batch 16 automatically, which also failed.
-
-Switched to `yolo26n-cls` at batch 8:
-
-| Setting | Value |
-|---|---|
-| Model | yolo26n-cls (ImageNet pretrained) |
-| Epochs | 30 |
-| Batch | 8 |
-| Training time | 1.95 hours |
-| **Top-1 accuracy** | **99.4%** |
-
-### 3. Data leakage discovered
-
-99.4% looked suspiciously high. Filenames such as `10_original_103.jpg_<id>.jpg` showed the dataset contains **several augmented copies of each original photo**. The split script had shuffled individual files, so copies of the same photo could land in both training and validation.
-
-A leakage check was written to group files by original photo.
-
-**The first version of the check was wrong.** It split filenames on `_jpg_`, but the real separator is `.jpg_`. Every file therefore looked unique and it reported 0% leakage. This was spotted because the number of "originals" exactly equalled the number of files - implausible for an augmented dataset.
-
-After fixing the separator:
-
-| | Originals |
-|---|---|
-| In training | 3,350 |
-| In validation | 1,462 |
-| **In both** | **1,230 (84.1%)** |
-
-**Fix:** rebuilt the split grouped by original photo, so every copy of a photo lands on one side only. Verified: 0 shared originals, with originals (2,863 train / 719 val) now correctly fewer than files (7,173 / 1,772).
-
-### 4. Retraining on the clean split (v2)
-
-| Setting | Value |
-|---|---|
-| Batch | 32 |
-| Epochs | 28 of 30 (early stopping; best at epoch 18) |
-| Training time | 1.75 hours |
-| **Top-1 accuracy** | **99.3%** |
-| Inference | 0.6 ms per image |
-
-**The accuracy barely changed.** The leakage was real but was not inflating the score much - Indian notes are strongly colour-coded, so recognising an unseen photo is nearly as easy as a seen one. The fix still mattered: 99.3% is now a number that can be defended.
-
-**Timing lesson:** batch 32 was expected to cut training time substantially. It did not (1.95 h to 1.75 h). With the GPU at around 20% utilisation, the bottleneck was not the GPU but most likely CPU-side decoding and resizing of large JPEG files. Pre-resizing images once would likely speed up future training considerably.
-
-### 5. Confusion matrix analysis (v2 validation)
-
-13 errors out of 1,772:
-
-| Class | Recall | Mistaken for |
-|---|---|---|
-| Rs.10 | 100% | - |
-| Rs.20 | 100% | - |
-| Rs.500 | 99.3% | Rs.200 (2) |
-| Rs.200 | 99.1% | Rs.10, Rs.100, Rs.500 |
-| Rs.50 | 98.9% | Rs.10, Rs.500 (2) |
-| Rs.100 | 98.7% | Rs.500 (3), Rs.10, Rs.50 |
-
-**Safety finding:** every error that overestimated a note's value was predicted as Rs.500. For a blind user this is the most costly mistake - being handed Rs.100 in change and told it is Rs.500. Overall accuracy hides this; the confusion matrix reveals it.
-
-### 6. Evaluation on an independent dataset
-
-Validation images came from the same source as training - same camera, same photographers, similar backgrounds - so 99.3% only describes performance on that source.
-
-A second, independent dataset was used for testing only: 2,577 phone photos (captured October 2022, per filename timestamps), with deliberately varied backgrounds including notes photographed in front of screens showing neon patterns.
-
-| Class | Recall |
-|---|---|
-| Rs.100 | 98.5% |
-| Rs.200 | 98.2% |
-| Rs.10 | 95.7% |
-| Rs.500 | 95.7% |
-| Rs.50 | 91.8% |
-| **Rs.20** | **46.4%** |
-| **Overall** | **85.1%** |
-
-Excluding Rs.20, accuracy was about 95.5% - the model generalises reasonably well, except for one note.
-
-266 errors overestimated a note's value, 134 of them predicted as Rs.500. 226 of the 266 came from Rs.20 alone.
-
-### 7. Root cause of the Rs.20 failure
-
-**Hypothesis:** India introduced a new green-yellow Rs.20 design in 2019, and the training data contained only the older red design.
-
-**Verification:** all 292 misclassified Rs.20 images were copied into one folder and inspected. **287 were the new design; 5 were the old one.** Hypothesis confirmed.
-
-This is a **training-data coverage gap**, not a model problem. More epochs, a larger model or tuning would not help - no model can recognise something it was never shown. It also explains why the errors scattered across several classes: a six-class classifier must always choose one of its six classes, and cannot say "I don't recognise this."
-
-**Decision:** retraining with new Rs.20 images is deferred. Two approaches were considered: photographing new Rs.20 notes personally, or using part of the external dataset's Rs.20 images with a blocked split by capture time (a random split would leak burst photos taken seconds apart). The limitation is documented instead.
-
-### 8. Environment incident: Windows Smart App Control
-
-Mid-session, previously working code failed to start:
+During a training run, previously working code suddenly failed to start:
 
     ImportError: DLL load failed while importing _C: An Application Control policy has blocked this file.
 
-Windows Security's Protection history showed nothing. The block was found in Event Viewer (**CodeIntegrity > Operational**): Smart App Control had blocked `torch\_C.cp313-win_amd64.pyd`, the core compiled PyTorch file.
+Windows Security's Protection history showed nothing. The block was found in Event Viewer under **Applications and Services Logs > Microsoft > Windows > CodeIntegrity > Operational**: Code Integrity had blocked `torch\_C.cp313-win_amd64.pyd`, PyTorch's core compiled file, for not meeting the required signing level (policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`).
 
-**Cause:** Smart App Control moves automatically from Evaluation mode (blocks nothing) to On (enforces), without notification. The nightly PyTorch build - a rare development snapshot - had no reputation with Windows, so was blocked.
+**Cause:** Smart App Control starts in Evaluation mode, which blocks nothing, and later switches itself to On without notifying the user. The nightly PyTorch build was a rare development snapshot with no reputation record, so once enforcement began it was blocked. Nothing in the project had changed.
 
-**Correction of a Day 1 mistake:** the nightly build was never needed. Stable PyTorch has supported `sm_120` since version 2.7 via CUDA 12.8 builds. On Day 1 a CUDA 12.4 build was installed, failed, and nightly was chosen instead of trying the CUDA 12.8 stable build. The project moved to stable `2.11.0+cu128`, which loaded successfully.
+**Before changing any security setting**, the Windows build was checked with `winver`: 26200.9445. Since the April 2026 update (build 26200.8116 onwards), turning Smart App Control off is reversible; on earlier builds it is permanent without resetting Windows.
 
-A second block followed on scipy 1.18.1 (`_ufuncs_cxx`), resolved by installing scipy 1.17. Smart App Control was kept **on** throughout.
+### 2. Correction of a Day 1 mistake: stable PyTorch works
 
-### 9. Repository hygiene
+On Day 1, a stable CUDA 12.4 (`cu124`) build failed on the RTX 5060, and the nightly build was chosen instead. That was the wrong conclusion. **Stable PyTorch has supported the RTX 50-series (`sm_120`) since version 2.7, through its CUDA 12.8 (`cu128`) builds.** The Day 1 problem was the CUDA version, not stable versus nightly.
 
-- `data/` added to `.gitignore`, keeping around 9,000 training images out of GitHub
-- A `weights/` rule intended to exclude a stray duplicate folder also matched `experiments/*/weights/`, silently excluding the trained models from the first commit. Noticed because `best.pt` was missing from the committed file list. Fixed by anchoring the rule to the project root: `/weights/`
-- Stray downloaded files removed; the crashed run's empty folder deleted
-- `requirements.txt` corrected: it still listed `pyttsx3` (no longer used) and was missing `edge-tts` and `pygame`
-- `docs/gpu-setup.md` corrected, with clickable reference links
+    pip uninstall torch torchvision -y
+    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+This installed `torch 2.11.0+cu128` and `torchvision 0.26.0+cu128`. They loaded with Smart App Control still on, and reported `CUDA: True`. Pip reported the wheel as already cached - the same stable build had been used successfully on this machine before the project began.
+
+### 3. A second block: scipy
+
+The application then failed on `scipy` 1.18.1 (`_ufuncs_cxx`), required by EasyOCR. Installing the previous release fixed it:
+
+    pip install --no-deps "scipy==1.17.*"
+
+`--no-deps` replaced only scipy, leaving every other package untouched. Smart App Control was kept **on** throughout. It has no exception list, so individual files cannot be allowed - but widely used releases passed where rare ones did not.
+
+### 4. Repository and documentation fixes
+
+| Change | Why |
+|---|---|
+| `requirements.txt`: removed `pyttsx3`, added `edge-tts` and `pygame`, pinned `scipy>=1.17,<1.18`, added the PyTorch install command | It still listed the abandoned speech engine and was missing the two packages actually used |
+| `docs/gpu-setup.md` rewritten | It repeated the Day 1 claim that nightly was required; now includes a correction note, a Smart App Control section, and clickable reference links |
+| Deprecated scripts moved to `archive/` with `git mv` | `git mv` records a move rather than a delete-and-recreate, so each file's history stays connected |
+| Unused models removed (`yolo26m.pt`, `yolov8n.pt`) | Superseded by the Objects365 model; both are public and re-downloadable |
+| `.gitignore`: added `*.cache` and `runs/`; anchored `/weights/` to the project root | `weights/` without a leading slash matched every folder of that name, not just the stray one at the root |
+
+An Ultralytics update (8.4.157) was offered and **deliberately declined** - after stabilising the environment, a new release could bring new compiled files and trigger another block.
 
 ### What was learned
 
-- A result that looks too good deserves checking before celebrating
-- A verification tool can itself be wrong - the first leakage check gave a false 0%, caught only because its output was implausible
-- In-distribution accuracy can overstate real performance: 99.3% on familiar data, 85.1% on independent data
-- Overall accuracy can hide the errors that matter most; the confusion matrix exposed the Rs.500 overestimation pattern
-- Some failures are data problems, not model problems, and no amount of training fixes missing data
 - Security software can break a working environment without any change to the project
-- A broad `.gitignore` rule can silently exclude important files
+- When Windows blocks a file, Event Viewer's CodeIntegrity log shows what Protection history does not
+- Check whether a security change is reversible before making it
+- A wrong conclusion can hide for days: the nightly build "worked", so the Day 1 reasoning was never revisited until it caused a failure
+- Pin known-good versions of packages rather than always taking the newest
 
-### Known limitations carried forward
-
-- The new Rs.20 design is not recognised, and is sometimes confidently misread as Rs.500
-- The currency model is trained but not yet integrated into the application
-- The classifier cannot express uncertainty; it always names one of six notes
-
-**Next goal:** Day 8 — Integrate the currency classifier into `main.py`, with a "not sure" response when confidence is low, so users are protected from confident misreadings before retraining.
+**Next goal:** Day 8 — Make the core application robust: non-blocking OCR, error handling with spoken explanations, and fewer repeated announcements.
