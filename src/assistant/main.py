@@ -22,7 +22,6 @@ Controls:
   SPACE - read text (Reading mode)
   D     - describe everything currently visible
   I     - identify: object label plus any text on it
-  C     - identify a currency note held up to the camera
   R     - repeat the last thing said
   Q     - quit
 """
@@ -53,28 +52,6 @@ FRAMES_BEFORE_GONE = 150
 # Maximum number of text fragments spoken per OCR capture.
 MAX_SPOKEN_WORDS = 6
 
-# Currency classifier trained on Day 7 (v2, leak-free split).
-CURRENCY_MODEL = "models/currency_v2.pt"
-
-# Below this confidence the app says "not sure" instead of naming a note.
-# Chosen on Day 8 from a threshold sweep on the external dataset: 0.90
-# cut spoken errors from 383 to 138 and overestimates from 266 to 88,
-# while still answering for about 92% of the notes the model handles well.
-# This is a safety net, not a fix: the new Rs.20 design is still misread,
-# often with very high confidence.
-CURRENCY_CONFIDENCE = 0.90
-
-# Denominations as they should be spoken. The raw class names ("Rs.500")
-# would be read out awkwardly by the speech engine.
-SPOKEN_DENOMINATIONS = {
-    "Rs.10": "ten rupees",
-    "Rs.20": "twenty rupees",
-    "Rs.50": "fifty rupees",
-    "Rs.100": "one hundred rupees",
-    "Rs.200": "two hundred rupees",
-    "Rs.500": "five hundred rupees",
-}
-
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
 
@@ -89,7 +66,6 @@ MODE_READING = "reading"
 print("Loading models...")
 
 detector = YOLO(DETECTION_MODEL)
-currency_model = YOLO(CURRENCY_MODEL)
 reader = easyocr.Reader(['en'], gpu=True)
 speaker = Speaker()
 
@@ -111,7 +87,6 @@ print("  M     - switch between Ambient and Reading mode")
 print("  SPACE - read text (Reading mode only)")
 print("  D     - describe what is currently visible")
 print("  I     - identify object and read its text")
-print("  C     - identify a currency note")
 print("  R     - repeat last announcement")
 print("  Q     - quit")
 
@@ -215,29 +190,6 @@ def identify(frame, detected_now):
         say("I cannot identify anything")
 
 
-def identify_currency(frame):
-    """Identify a currency note held up to the camera.
-
-    The classifier always names one of six notes - it cannot say "I don't
-    know" on its own. Below CURRENCY_CONFIDENCE the app says "not sure"
-    instead, and suggests how to get a better reading, since the user can
-    simply reposition the note and try again.
-
-    When unsure, the model's guess is deliberately NOT spoken: a hedged
-    wrong answer ("possibly five hundred") can still mislead.
-    """
-    result = currency_model.predict(source=frame, imgsz=224, verbose=False)[0]
-    label = currency_model.names[result.probs.top1]
-    confidence = float(result.probs.top1conf)
-
-    print(f"CURRENCY: {label}  (confidence: {confidence:.3f})")
-
-    if confidence >= CURRENCY_CONFIDENCE:
-        say(SPOKEN_DENOMINATIONS[label])
-    else:
-        say("Not sure. Try holding the note closer, or in better light.")
-
-
 def track_objects(detected_now, announce):
     """Update which objects are considered present.
 
@@ -314,7 +266,6 @@ try:
             "SPACE - read text",
             "D - describe scene",
             "I - identify object",
-            "C - identify currency",
             "R - repeat",
             "Q - quit",
         ]
@@ -360,10 +311,6 @@ try:
         elif key == ord('i'):
             say("Identifying")
             identify(frame, detected_now)
-
-        # --- C = identify a currency note ---
-        elif key == ord('c'):
-            identify_currency(frame)
 
         # --- R = repeat last announcement ---
         elif key == ord('r'):
