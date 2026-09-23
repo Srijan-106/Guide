@@ -1,11 +1,14 @@
 # Development Log
 
-This file tracks daily progress on the Guide  project.
+This file tracks daily progress on the Guide (VisionAssist) project.
 Each entry corresponds to a handwritten diary entry, expanded here in digital form.
+
+Where a later day showed an earlier entry to be wrong, the original text is
+kept and a dated correction note is added, rather than rewriting history.
 
 ---
 
-## Day 0 — [5th sept]
+## Day 0 — [5 sept]
 
 **Goal:** Project foundation setup — no functional code written yet.
 
@@ -30,7 +33,7 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
 
 ---
 
-## Day 1 — [6th sept]
+## Day 1 — [6 sept]
 
 **Goal:** Set up an isolated Python virtual environment and verify GPU access.
 
@@ -46,11 +49,19 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
 - Generated `requirements.txt` to freeze the exact working environment
 - Committed and pushed changes to GitHub
 
+> **Correction (added Day 7):** the statement above is wrong. Stable PyTorch
+> has supported Blackwell (sm_120) GPUs since version 2.7, through its CUDA
+> 12.8 (`cu128`) builds. The failure seen on this day came from installing a
+> **CUDA 12.4** stable build; the correct fix was the **stable CUDA 12.8**
+> build, not a nightly one. The nightly build later caused a Windows security
+> block, and the project moved to stable `2.11.0+cu128` on Day 7.
+
 **What was learned:**
 - The difference between a fresh pip install defaulting to CPU-only builds
   versus explicitly requesting GPU-enabled builds
 - Why very new GPU hardware sometimes requires nightly/pre-release software
-  builds until official stable support catches up
+  builds until official stable support catches up *(see correction above —
+  this was not actually the case here)*
 - What `pip freeze` and `requirements.txt` are for, and why they matter
   for reproducibility
 
@@ -60,9 +71,10 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
 - Needed to verify whether the installed PyTorch was CPU-only or the
   correct CUDA build before proceeding
 
-
-> **Correction (Day 7):** the nightly build was never necessary. Stable PyTorch has supported `sm_120` since version 2.7 via its CUDA 12.8 (`cu128`) builds. The original error came from installing a CUDA 12.4 build. The project moved to stable `2.11.0+cu128` on Day 7.
-
+> **Correction (Day 7):** the nightly build was never necessary. Stable PyTorch
+> has supported `sm_120` since version 2.7, through its CUDA 12.8 (`cu128`)
+> builds. The original error came from installing a CUDA 12.4 build. The project
+> moved to stable `2.11.0+cu128` on Day 7.
 
 **Next goal:** Day 2 — first real object detection code using YOLOv8n.
 
@@ -108,7 +120,7 @@ Each entry corresponds to a handwritten diary entry, expanded here in digital fo
 
 ---
 
-## Day 3 — [ 7 -sept]
+## Day 3 — [7 sept]
 
 **Goal:** Measure real-time FPS, test confidence threshold tradeoffs, document a genuine detection failure case.
 
@@ -510,7 +522,7 @@ improved character accuracy.
 
 ### 6. Portability fixes
 
-Two issues would have prevented the project running on any other machine:
+Three issues would have prevented the project running on any other machine:
 
 | Problem | Fix |
 |---|---|
@@ -518,15 +530,29 @@ Two issues would have prevented the project running on any other machine:
 | `requirements.txt` listed ~30 transitive sub-dependencies from `pip freeze` | Reduced to 6 direct dependencies; pip resolves the rest, avoiding version conflicts |
 | `src/ocr/ocr.py` contained a hardcoded Tesseract path specific to the development machine | Marked deprecated with an explanatory docstring; retained for reference only |
 
-Created `docs/gpu-setup.md` documenting the RTX 50-series `sm_120` incompatibility, the CUDA 12.8 nightly fix (later found unnecessary - see Day 7), the tested configuration, and measured performance figures.
+Created `docs/gpu-setup.md` documenting the RTX 50-series `sm_120`
+incompatibility, the CUDA 12.8 nightly fix, the tested configuration, and
+measured performance figures.
 
-Verified the new `requirements.txt` by creating a clean virtual environment outside the project and installing from it successfully.
+> **Correction (added Day 7):** `gpu-setup.md` as written here repeated the
+> Day 1 error that a nightly build was required. It was rewritten on Day 7.
+
+Verified the new `requirements.txt` by creating a clean virtual
+environment outside the project directory and installing from it
+successfully.
 
 ### Known limitation carried forward
 
-EasyOCR returns text regions in its own detection order, not human reading order. When pointed at dense paragraph text, individually correct words are announced in a meaningless sequence. Position-based sorting is the identified fix, not yet implemented.
+EasyOCR returns text regions in its own detection order, not human
+reading order. When pointed at dense paragraph text, individually correct
+words are announced in a meaningless sequence. The bounding-box
+coordinates needed to reconstruct reading order are already returned by
+EasyOCR but are currently unused. Position-based sorting is the
+identified fix, not yet implemented.
 
-**Next goal:** Day 6 — Integration: combine object detection and OCR into a single application.
+**Next goal:** Day 6 — Integration: combine object detection and OCR into
+a single application.
+
 
 ---
 
@@ -599,8 +625,6 @@ The bounding-box coordinates required for this were already returned by EasyOCR 
 **Next goal:** Day 6 Part A — usability features and a model vocabulary upgrade.
 
 ---
-
-
 
 ## Day 6 Part A — [20 sept]
 
@@ -697,36 +721,68 @@ Ultralytics publishes YOLO26 models pretrained on Objects365v1 — 365 classes a
 
 ## Day 7 — [20–22 sept]
 
-**Goal:** Resolve a Windows security block that stopped the project from running, correct the PyTorch setup chosen on Day 1, and tidy the repository.
+**Goal:** Resolve a Windows security block that stopped the project from
+running, correct the PyTorch setup chosen on Day 1, and tidy the repository.
+
+Nothing in the project had changed. Code that had worked the previous day
+suddenly refused to start, which made this a diagnosis exercise rather than a
+coding one.
 
 ### 1. Windows Smart App Control blocked PyTorch
 
-During a training run, previously working code suddenly failed to start:
+Previously working code failed at startup:
 
     ImportError: DLL load failed while importing _C: An Application Control policy has blocked this file.
 
-Windows Security's Protection history showed nothing. The block was found in Event Viewer under **Applications and Services Logs > Microsoft > Windows > CodeIntegrity > Operational**: Code Integrity had blocked `torch\_C.cp313-win_amd64.pyd`, PyTorch's core compiled file, for not meeting the required signing level (policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`).
+Windows Security's Protection history showed nothing — Smart App Control blocks
+are not recorded there. The block was found in Event Viewer under
+**Applications and Services Logs > Microsoft > Windows > CodeIntegrity >
+Operational**: Code Integrity had blocked
+`torch\_C.cp313-win_amd64.pyd`, PyTorch's core compiled file, for not meeting
+the required signing level (policy `{0283ac0f-fff1-49ae-ada1-8a933130cad6}`).
 
-**Cause:** Smart App Control starts in Evaluation mode, which blocks nothing, and later switches itself to On without notifying the user. The nightly PyTorch build was a rare development snapshot with no reputation record, so once enforcement began it was blocked. Nothing in the project had changed.
+**Cause:** Smart App Control starts in Evaluation mode, which blocks nothing,
+and Windows later switches it to On automatically without notifying the user.
+The nightly PyTorch build was a rare development snapshot with no reputation
+record, so once enforcement began it was blocked.
 
-**Before changing any security setting**, the Windows build was checked with `winver`: 26200.9445. Since the April 2026 update (build 26200.8116 onwards), turning Smart App Control off is reversible; on earlier builds it is permanent without resetting Windows.
+**Before changing any security setting**, the Windows build was checked with
+`winver`: 26200.9445. Since the April 2026 update (builds 26100.8116 /
+26200.8116 onwards), turning Smart App Control off is reversible; on earlier
+builds it is permanent without resetting Windows. In the end it was never
+turned off — the fix below worked with it still on.
 
 ### 2. Correction of a Day 1 mistake: stable PyTorch works
 
-On Day 1, a stable CUDA 12.4 (`cu124`) build failed on the RTX 5060, and the nightly build was chosen instead. That was the wrong conclusion. **Stable PyTorch has supported the RTX 50-series (`sm_120`) since version 2.7, through its CUDA 12.8 (`cu128`) builds.** The Day 1 problem was the CUDA version, not stable versus nightly.
+On Day 1, a stable CUDA 12.4 (`cu124`) build failed on the RTX 5060, and a
+nightly build was chosen instead. That was the wrong conclusion. **Stable
+PyTorch has supported the RTX 50-series (`sm_120`) since version 2.7, through
+its CUDA 12.8 (`cu128`) builds.** The Day 1 problem was the CUDA version, not
+stable versus nightly.
 
     pip uninstall torch torchvision -y
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 
-This installed `torch 2.11.0+cu128` and `torchvision 0.26.0+cu128`. They loaded with Smart App Control still on, and reported `CUDA: True`. Pip reported the wheel as already cached - the same stable build had been used successfully on this machine before the project began.
+This installed `torch 2.11.0+cu128` and `torchvision 0.26.0+cu128`, which
+loaded with Smart App Control still on and reported `CUDA: True`. Pip reported
+the wheel as already cached — the same stable build had been used successfully
+on this machine before the project began.
+
+The mistake went unnoticed for six days because the nightly build worked. A
+wrong conclusion that still produces a working result can sit undetected until
+something else exposes it.
 
 ### 3. A second block: scipy
 
-The application then failed on `scipy` 1.18.1 (`_ufuncs_cxx`), required by EasyOCR. Installing the previous release fixed it:
+The application then failed on `scipy` 1.18.1 (`_ufuncs_cxx`), required by
+EasyOCR. Installing the previous release fixed it:
 
     pip install --no-deps "scipy==1.17.*"
 
-`--no-deps` replaced only scipy, leaving every other package untouched. Smart App Control was kept **on** throughout. It has no exception list, so individual files cannot be allowed - but widely used releases passed where rare ones did not.
+`--no-deps` replaced only scipy, leaving every other package untouched. Smart
+App Control was kept **on** throughout. It has no exception list, so individual
+files cannot be allowed — but widely used releases passed where rare ones did
+not.
 
 ### 4. Repository and documentation fixes
 
@@ -738,14 +794,18 @@ The application then failed on `scipy` 1.18.1 (`_ufuncs_cxx`), required by EasyO
 | Unused models removed (`yolo26m.pt`, `yolov8n.pt`) | Superseded by the Objects365 model; both are public and re-downloadable |
 | `.gitignore`: added `*.cache` and `runs/`; anchored `/weights/` to the project root | `weights/` without a leading slash matched every folder of that name, not just the stray one at the root |
 
-An Ultralytics update (8.4.157) was offered and **deliberately declined** - after stabilising the environment, a new release could bring new compiled files and trigger another block.
+An Ultralytics update (8.4.157) was offered and **deliberately declined** —
+after stabilising the environment, a new release could bring new compiled files
+and trigger another block.
 
 ### What was learned
 
 - Security software can break a working environment without any change to the project
 - When Windows blocks a file, Event Viewer's CodeIntegrity log shows what Protection history does not
 - Check whether a security change is reversible before making it
-- A wrong conclusion can hide for days: the nightly build "worked", so the Day 1 reasoning was never revisited until it caused a failure
+- A wrong conclusion can hide for days when the wrong path still works
 - Pin known-good versions of packages rather than always taking the newest
+- A broad `.gitignore` rule can silently exclude files you meant to keep
 
-**Next goal:** Day 8 — Make the core application robust: non-blocking OCR, error handling with spoken explanations, and fewer repeated announcements.
+**Next goal:** Day 8 — Make the core application robust: non-blocking OCR,
+error handling with spoken explanations, and fewer repeated announcements.

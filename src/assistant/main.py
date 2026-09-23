@@ -12,21 +12,25 @@ Two modes, switched with the M key:
     text and presses SPACE to have it read aloud. This is deliberate
     inquiry - "what does this say".
 
-Modes exist because the two features serve different intentions.
-Ambient chatter interrupting a deliberate reading is confusing, and a
-user focused on a product label does not want to hear about the
-furniture behind them.
+Text reading runs on a background thread, so the video and object
+detection keep running while text is being read.
+
+Speech is prioritised: anything the user asks for (M, SPACE, D, I, R)
+jumps ahead of ambient announcements, and ambient announcements that
+cannot be spoken promptly are dropped rather than played late.
 
 Controls:
   M     - switch mode
   SPACE - read text (Reading mode)
   D     - describe everything currently visible
-  I     - identify: object label plus any text on it
+  I     - identify the object being held up, and read any text on it
   R     - repeat the last thing said
   Q     - quit
 """
 
+import math
 import sys
+import threading
 import time
 
 import cv2
@@ -43,7 +47,19 @@ from speech.tts import Speaker
 
 # Object detection: YOLO26 pretrained on Objects365 (365 classes)
 DETECTION_MODEL = "models/yolo26m-objv1-150.pt"
+
+# Threshold for continuous ambient detection. Deliberately high, to stop
+# weak detections flickering in and out and being announced repeatedly.
 DETECTION_CONFIDENCE = 0.65
+
+# When the user presses I or SPACE, detection runs once more on that
+# frame at this lower threshold. A deliberate question about one held-up
+# item can accept weaker detections - with honest wording.
+IDENTIFY_CONFIDENCE = 0.30
+
+# At or above this, the label is stated plainly ("I see cup"); below it,
+# the label is hedged ("This might be cup").
+CONFIDENT_LABEL = 0.50
 
 # How many consecutive frames an object must be missing before it is
 # forgotten and becomes eligible to be announced again.
@@ -51,6 +67,46 @@ FRAMES_BEFORE_GONE = 150
 
 # Maximum number of text fragments spoken per OCR capture.
 MAX_SPOKEN_WORDS = 6
+
+# Ambient announcements are dropped if they cannot be spoken within this
+# many seconds - a late announcement describes a scene that has changed.
+AMBIENT_EXPIRY = 6.0
+
+# The same object is not announced again within this many seconds, even
+# if it leaves the frame and comes back. This stops objects at the edge
+# of the frame being announced repeatedly as detection flickers.
+ANNOUNCE_COOLDOWN = 30.0
+
+# A held-up object covers the centre of the frame and is not enormous.
+# Anything larger than this share of the frame is background - a wall,
+# a bed, a shelf - rather than the thing being shown to the camera.
+MAX_OBJECT_AREA = 0.55
+
+# If nothing covers the centre, an object is still accepted when its own
+# centre is within this distance of the frame centre (0 = centre, 1 = corner)
+MAX_OBJECT_DISTANCE = 0.30
+
+# True while testing with a laptop webcam that faces the user: then the
+# user's own body and worn items are always in view, and must not be
+# mistaken for the item being held up. For a camera worn facing outward
+# - the real use case - set this to False.
+CAMERA_FACES_USER = True
+
+# Things worn or carried by the user. Only used when CAMERA_FACES_USER is
+# True, and only for choosing the held-up item - ambient announcements
+# and the D key still report all of these normally.
+IGNORE_FOR_IDENTIFY = {
+    "person", "glasses", "hat", "head phone", "headphone", "earphone",
+    "watch", "bracelet", "necklace", "ring", "tie", "belt", "helmet",
+    "mask", "gloves", "backpack", "handbag",
+}
+
+# An object tracked for longer than this counts as established
+# background rather than something just brought into view.
+RECENT_SECONDS = 20.0
+
+# How long the chosen object stays highlighted on screen
+HIGHLIGHT_SECONDS = 3.0
 
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
@@ -82,11 +138,15 @@ mode = MODE_AMBIENT
 # Remembers the last thing spoken, so the user can ask to hear it again
 last_announcement = ""
 
+# Set while a text reading is running on the background thread, so a
+# second reading cannot start on top of it
+ocr_busy = threading.Event()
+
 print("Ready.")
 print("  M     - switch between Ambient and Reading mode")
 print("  SPACE - read text (Reading mode only)")
 print("  D     - describe what is currently visible")
-print("  I     - identify object and read its text")
+print("  I     - identify the held-up object and read its text")
 print("  R     - repeat last announcement")
 print("  Q     - quit")
 
@@ -95,26 +155,38 @@ print("  Q     - quit")
 # Object tracking state
 # ---------------------------------------------------------------------
 
-currently_present = set()
-missing_counts = {}
+currently_present = set()   # objects believed to be in view right now
+missing_counts = {}         # label -> consecutive frames not seen
+last_announced = {}         # label -> time it was last spoken
+first_seen = {}             # label -> time it (re)appeared in view
 previous_time = 0
+
+# The object chosen by the last identification, highlighted on screen
+prominent_box = None
+prominent_until = 0.0
 
 
 # ---------------------------------------------------------------------
 # Speech helper
 # ---------------------------------------------------------------------
 
-def say(text):
-    """Speak text and remember it, so the R key can repeat it."""
+def say(text, priority=False, expires_in=None):
+    """Speak text and remember it, so the R key can repeat it.
+
+    priority   - jumps ahead of queued ambient chatter and stops whatever
+                 is playing. Used for anything the user asked for.
+    expires_in - drop the announcement if it has not been spoken within
+                 this many seconds.
+    """
     global last_announcement
     if not text or not text.strip():
         return
     last_announcement = text
-    speaker.speak(text)
+    speaker.speak(text, priority=priority, expires_in=expires_in)
 
 
 # ---------------------------------------------------------------------
-# Helper functions
+# Text reading
 # ---------------------------------------------------------------------
 
 def read_text_from_frame(frame):
@@ -161,49 +233,205 @@ def read_text_from_frame(frame):
     return final_words
 
 
+def start_reading(frame, start_message, on_done):
+    """Read text on a background thread, so the video keeps running.
+
+    frame         - the frame to read, copied so the loop can move on
+    start_message - spoken immediately, e.g. "Reading"
+    on_done       - called with the list of words once reading finishes
+    """
+    if ocr_busy.is_set():
+        say("Still reading, please wait", priority=True)
+        return
+
+    ocr_busy.set()
+    say(start_message, priority=True)
+
+    # The main loop replaces `frame` on every iteration, so the thread
+    # must work on its own snapshot taken at the moment of the keypress
+    snapshot = frame.copy()
+
+    def work():
+        try:
+            words = read_text_from_frame(snapshot)
+            on_done(words)
+        except Exception as error:
+            print(f"OCR error: {error}")
+            say("Sorry, reading failed", priority=True)
+        finally:
+            # Always clear the flag - otherwise one error would block
+            # every future reading
+            ocr_busy.clear()
+
+    # daemon=True means this thread will not keep the program alive
+    # after the user quits
+    threading.Thread(target=work, daemon=True).start()
+
+
+def speak_identity(words, label, confidence):
+    """Announce the object and the text on it.
+
+    Kept as separate sentences, so a wrong object label cannot corrupt
+    the text - which is the more reliable of the two. Weak detections are
+    phrased as uncertain rather than stated as fact.
+    """
+    if label and confidence < CONFIDENT_LABEL:
+        object_part = f"This might be {label}."
+    elif label:
+        object_part = f"I see {label}."
+    else:
+        object_part = None
+
+    if words and object_part:
+        say(f"{object_part} It says: " + ", ".join(words), priority=True)
+    elif words:
+        say("It says: " + ", ".join(words), priority=True)
+    elif object_part:
+        say(f"{object_part} No readable text.", priority=True)
+    else:
+        say("I cannot identify anything", priority=True)
+
+
+# ---------------------------------------------------------------------
+# Choosing the held-up object
+# ---------------------------------------------------------------------
+
+def most_prominent_object(result):
+    """Pick the object most likely to be the one held up to the camera.
+
+    Returns (label, box, confidence), where box is [x1, y1, x2, y2] in
+    pixels, or (None, None, None) if nothing suitable was found.
+
+    Three rules, in order:
+      1. Ignore worn items (when the camera faces the user) and anything
+         filling most of the frame.
+      2. Prefer the SMALLEST box that contains the centre of the frame -
+         the most specific thing under the centre point.
+      3. Otherwise take the nearest object to the centre, preferring
+         anything that is not established background.
+
+    Every detection is printed with the reason it was kept or skipped,
+    so the choice can be checked rather than guessed.
+    """
+    now = time.time()
+    covering_centre = []
+    nearby = []
+
+    print(f"IDENTIFY: {len(result.boxes)} detections in this frame")
+
+    for box_n, box_px, class_id, conf in zip(result.boxes.xywhn,
+                                             result.boxes.xyxy,
+                                             result.boxes.cls,
+                                             result.boxes.conf):
+        label = result.names[int(class_id)]
+        confidence = float(conf)
+        x, y, width, height = box_n.tolist()
+        area = width * height
+        distance = math.hypot(x - 0.5, y - 0.5)
+        info = (f"  {label:<15} conf {confidence:.2f}   "
+                f"area {area * 100:3.0f}%   distance {distance:.2f}")
+
+        if CAMERA_FACES_USER and label.lower() in IGNORE_FOR_IDENTIFY:
+            print(info + "   -> skipped: worn item")
+            continue
+
+        if area > MAX_OBJECT_AREA:
+            print(info + "   -> skipped: too large")
+            continue
+
+        pixels = [int(v) for v in box_px.tolist()]
+
+        # Background = something ambient tracking has known about for a
+        # while. A held item is usually new - or too faint for ambient
+        # tracking, at its higher threshold, to have registered at all.
+        is_background = (label in currently_present and
+                         now - first_seen.get(label, now) > RECENT_SECONDS)
+
+        if abs(x - 0.5) <= width / 2 and abs(y - 0.5) <= height / 2:
+            print(info + "   -> candidate: covers centre")
+            covering_centre.append((area, label, pixels, confidence))
+        else:
+            print(info + "   -> candidate: nearby")
+            nearby.append((is_background, distance, label, pixels, confidence))
+
+    if covering_centre:
+        area, label, pixels, confidence = min(covering_centre)
+        print(f"PROMINENT: {label} (covers centre, conf {confidence:.2f})")
+        return label, pixels, confidence
+
+    if nearby:
+        background, distance, label, pixels, confidence = min(nearby)
+        if distance <= MAX_OBJECT_DISTANCE:
+            kind = "background" if background else "new"
+            print(f"PROMINENT: {label} ({kind}, distance {distance:.2f}, "
+                  f"conf {confidence:.2f})")
+            return label, pixels, confidence
+        print(f"PROMINENT: none (nearest, {label}, is too far: {distance:.2f})")
+        return None, None, None
+
+    print("PROMINENT: none")
+    return None, None, None
+
+
+def identify_and_read(frame, start_message):
+    """Choose the held-up object, then read its text in the background.
+
+    Runs its own detection pass at IDENTIFY_CONFIDENCE, lower than the
+    ambient threshold, since this is a deliberate question about one item.
+    """
+    global prominent_box, prominent_until
+
+    result = detector.predict(source=frame, conf=IDENTIFY_CONFIDENCE,
+                              verbose=False)[0]
+    label, prominent_box, confidence = most_prominent_object(result)
+    prominent_until = time.time() + HIGHLIGHT_SECONDS
+
+    start_reading(frame, start_message,
+                  lambda words: speak_identity(words, label, confidence))
+
+
+# ---------------------------------------------------------------------
+# Object announcements
+# ---------------------------------------------------------------------
+
 def describe_scene():
     """Speak a summary of everything currently believed to be visible."""
     if not currently_present:
-        say("I do not see anything I recognise")
+        say("I do not see anything I recognise", priority=True)
         return
 
-    objects = sorted(currently_present)
-    say("I see: " + ", ".join(objects))
-
-
-def identify(frame, detected_now):
-    """Announce any text found on an object, falling back to the object
-    label only when no text is found.
-
-    Object labels from a general-purpose model are often wrong for
-    specific products, while text is far more reliable - so the label is
-    only used when the reliable source produces nothing.
-    """
-    words = read_text_from_frame(frame)
-
-    if words:
-        say("It says: " + ", ".join(words))
-    elif detected_now:
-        objects = sorted(detected_now)
-        say("I see " + objects[0] + ", but no readable text")
-    else:
-        say("I cannot identify anything")
+    say("I see: " + ", ".join(sorted(currently_present)), priority=True)
 
 
 def track_objects(detected_now, announce):
     """Update which objects are considered present.
+
+    Newly-appeared objects are announced together in one sentence rather
+    than one at a time: seven separate announcements meant seven network
+    round trips, which put the speech queue five seconds behind.
 
     When announce is False the tracking still runs, so that switching
     back to ambient mode does not immediately re-announce everything
     that was already in view.
     """
     new_objects = detected_now - currently_present
+    now = time.time()
+    to_announce = []
 
-    for label in new_objects:
+    for label in sorted(new_objects):
         currently_present.add(label)
-        if announce:
-            print(f"ANNOUNCING: {label}")
-            say(label)
+        first_seen[label] = now
+
+        # Skip anything announced recently, even if it left and returned
+        if now - last_announced.get(label, 0) < ANNOUNCE_COOLDOWN:
+            continue
+
+        last_announced[label] = now
+        to_announce.append(label)
+
+    if announce and to_announce:
+        print(f"ANNOUNCING: {', '.join(to_announce)}")
+        say(", ".join(to_announce), expires_in=AMBIENT_EXPIRY)
 
     for label in detected_now:
         missing_counts[label] = 0
@@ -223,7 +451,7 @@ def track_objects(detected_now, announce):
 # Main loop
 # ---------------------------------------------------------------------
 
-say("Ambient mode")
+say("Ambient mode", priority=True)
 
 try:
     while True:
@@ -259,6 +487,20 @@ try:
             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2
         )
 
+        # Highlight the object chosen by the last identification
+        if prominent_box and time.time() < prominent_until:
+            x1, y1, x2, y2 = prominent_box
+            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 140, 255), 4)
+            cv2.putText(annotated_frame, "CHOSEN", (x1, max(30, y1 - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 140, 255), 2)
+
+        # Visible sign that a reading is in progress
+        if ocr_busy.is_set():
+            cv2.putText(
+                annotated_frame, "READING TEXT...", (10, 280),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2
+            )
+
         # On-screen control reminder. Drawn one line at a time because
         # OpenCV has no multi-line text support.
         controls = [
@@ -285,40 +527,34 @@ try:
             if mode == MODE_AMBIENT:
                 mode = MODE_READING
                 print("Switched to READING mode")
-                say("Reading mode. Press space to read text.")
+                say("Reading mode. Press space to read text.", priority=True)
             else:
                 mode = MODE_AMBIENT
                 print("Switched to AMBIENT mode")
-                say("Ambient mode")
+                say("Ambient mode", priority=True)
 
         # --- SPACE = read text (Reading mode only) ---
         elif key == ord(' '):
             if mode == MODE_READING:
-                say("Reading")
-                words = read_text_from_frame(frame)
-                if words:
-                    say(", ".join(words))
-                else:
-                    say("No readable text found")
+                identify_and_read(frame, "Reading")
             else:
-                say("Switch to reading mode first")
+                say("Switch to reading mode first", priority=True)
 
         # --- D = describe what is visible ---
         elif key == ord('d'):
             describe_scene()
 
-        # --- I = identify object and its text ---
+        # --- I = identify the held-up object and its text ---
         elif key == ord('i'):
-            say("Identifying")
-            identify(frame, detected_now)
+            identify_and_read(frame, "Identifying")
 
         # --- R = repeat last announcement ---
         elif key == ord('r'):
             if last_announcement:
                 print(f"REPEATING: {last_announcement}")
-                speaker.speak(last_announcement)
+                speaker.speak(last_announcement, priority=True)
             else:
-                speaker.speak("Nothing to repeat")
+                speaker.speak("Nothing to repeat", priority=True)
 
         elif key == ord('q'):
             break
