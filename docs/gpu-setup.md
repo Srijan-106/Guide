@@ -4,6 +4,9 @@ VisionAssist uses YOLO (via Ultralytics) and EasyOCR, both of which run signific
 
 ---
 
+> **Start here instead:** [docs/setup.md](setup.md) — one command that checks your
+> system and installs everything. Come back to this page if something goes wrong.
+
 ## Installing PyTorch with GPU support
 
 PyTorch is not pinned in `requirements.txt`, because the correct build depends on your GPU. Install it separately:

@@ -73,22 +73,17 @@ Full details: [docs/devlog.md](docs/devlog.md)
 
 ## Installation
 
-Requires Python 3.13 and Windows. An NVIDIA GPU is strongly recommended.
+Requires Python 3.10 or newer. An NVIDIA GPU is recommended but not required.
 
     git clone https://github.com/Srijan-106/Guide.git
     cd Guide
     python -m venv .venv
     .venv\Scripts\activate
+    python setup.py
 
-Install PyTorch with GPU support first (it is not on PyPI's default index):
-
-    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-
-Then the remaining dependencies:
-
-    pip install -r requirements.txt
-
-GPU setup, RTX 50-series notes, and Windows Smart App Control issues: [docs/gpu-setup.md](docs/gpu-setup.md)
+`setup.py` checks your system, then installs everything. Full instructions and
+options: [docs/setup.md](docs/setup.md) · Troubleshooting:
+[docs/gpu-setup.md](docs/gpu-setup.md)
 
 ## Running
 
