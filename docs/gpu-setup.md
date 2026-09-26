@@ -29,7 +29,7 @@ Expected: a version ending in `+cu128` with no `.dev` in it, and `CUDA: True`.
 
 ---
 
-## NVIDIA RTX 50-series (Blackwell) GPUs
+## NVIDIA RTX 50-series (Blackwell) GPUs.
 
 RTX 50-series cards use CUDA compute capability `sm_120`. **Stable PyTorch has supported this since version 2.7**, via the CUDA 12.8 (`cu128`) builds. No nightly or pre-release build is needed. ([source](https://docs.salad.com/container-engine/tutorials/machine-learning/pytorch-rtx5090))
 
