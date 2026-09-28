@@ -809,3 +809,167 @@ and trigger another block.
 
 **Next goal:** Day 8 — Make the core application robust: non-blocking OCR,
 error handling with spoken explanations, and fewer repeated announcements.
+
+---
+
+## Day 8 — [22–28 sept]
+
+**Goal:** Turn a working demonstration into something that behaves sensibly
+when things go wrong — text reading that does not freeze the video, speech that
+stays responsive, errors explained aloud instead of silence, and speech that
+keeps working without internet.
+
+No new capability was added today. Every existing one was made dependable,
+which for an accessibility tool matters more.
+
+### 1. Text reading without freezing the video
+
+Pressing SPACE ran EasyOCR on the main loop, so for one to two seconds nothing
+else happened — no frames, no detection, frozen video.
+
+OCR now runs on a background thread. Three details matter:
+
+| Decision | Reason |
+|---|---|
+| `frame.copy()` | The loop replaces `frame` every iteration; the thread needs its own snapshot of the moment the key was pressed |
+| An `ocr_busy` flag, and a spoken "Still reading, please wait" | A second reading would waste the GPU; silence would be ambiguous |
+| `try` / `except` / `finally` inside the thread | Failures are spoken, and `finally` always clears the flag — otherwise one error would block reading for the whole session |
+
+**Why threading was safe here but failed on Day 5:** the Day 5 failures came
+from pyttsx3, whose Windows speech engine has strict thread-affinity rules.
+EasyOCR is plain Python and PyTorch, with no such constraint. The same
+technique is safe or unsafe depending entirely on what runs inside it.
+
+### 2. Speech five seconds behind
+
+**Symptom:** announcements arrived about five seconds after the key was pressed.
+
+**Diagnosis:** at startup, ambient mode announced seven objects one at a time.
+Each is a separate network round trip plus playback — one to two seconds each.
+By the time M was pressed, a dozen announcements were queued ahead of it.
+**Speech was not slow; the queue was long.**
+
+Four changes:
+
+| Change | Effect |
+|---|---|
+| Priority speech | Anything the user asks for (M, SPACE, D, I, R) jumps the queue and stops what is playing |
+| Batched announcements | Seven objects become one sentence — one round trip instead of seven |
+| Expiring ambient announcements | Dropped if not spoken within six seconds: they describe a scene that has changed |
+| Per-object cooldown (30 s) | Ended the repeated "hat" and "cabinet/shelf" announcements from flickering detections |
+
+Ambient announcements are also not queued at all while speech is failing — each
+would attempt a network call that fails, producing errors and no sound.
+
+### 3. Identifying the object being held up
+
+The I key now announces the object and its text together — *"I see canned. It
+says: PEPSI."* This reverses a Day 6 decision to omit object labels, made when
+labels came from COCO and were often wrong. With Objects365 they are good
+enough to be worth saying. They are kept as **two separate sentences**, so a
+wrong label cannot corrupt the text.
+
+Choosing *which* object took four attempts:
+
+| Attempt | Rule | What went wrong |
+|---|---|---|
+| 1 | Largest box near the centre | Chose `cabinet/shelf` — furniture is large |
+| 2 | Smallest box covering the centre | Chose the user's `glasses`, dead centre |
+| 3 | Ignore worn items; prefer recent objects | Worked, but a weak label was chosen when nothing better existed |
+| 4 | Add a confidence floor and confidence tie-breaks | Current behaviour |
+
+**Bug — the wrong object chosen when two boxes tied:**
+
+    canned   conf 0.85   distance 0.20
+    bottle   conf 0.46   distance 0.20
+    PROMINENT: bottle
+
+Sorting compared `(is_background, distance, label, ...)`. When distance tied,
+Python moved on to the label — and "bottle" sorts before "canned"
+alphabetically. Confidence was never considered. Fixed by putting
+`-confidence` in the sort key before the label, and rounding distance and area
+so near-equal values genuinely tie.
+
+**An honest finding:** a cream tube, a spray bottle and a paper cup produced no
+detections at all, even at 0.30 confidence. They are not among Objects365's
+classes. The app falls back to reading their text, which for a product is
+arguably the more useful half.
+
+### 4. Errors explained instead of silence
+
+| Failure | Behaviour now |
+|---|---|
+| Missing model, camera busy, no audio | Printed in plain language naming what failed and what to check, then exit — speech may be the broken thing, and whoever is installing is reading the terminal |
+| Camera lost mid-session | "Camera problem", retried for three seconds, then "Camera disconnected. Stopping." Recovery is also announced |
+| One bad frame | Detection wrapped in `try`; the frame is skipped rather than ending the run |
+| Ctrl+C | Caught, so it exits cleanly instead of printing a traceback |
+
+**When speech itself fails**, it cannot be announced by speaking. The app
+generates a **beep** every ten seconds — no network, no speech engine needed —
+and shows SPEECH NOT WORKING on screen. The speech module counts consecutive
+failures and translates the error, so the terminal reads
+`SPEECH FAILING: no internet connection` rather than a socket error.
+
+### 5. Speech without internet
+
+A beep says something is wrong but nothing more. Better: when edge-tts cannot
+reach the network, fall back to the **Windows built-in voice** via pyttsx3.
+
+**Deliberately reintroducing a library that failed five times.** pyttsx3 was
+abandoned on Day 5 Part A after five failures ending in a complete hang. What
+changed:
+
+| Day 5 | Day 8 |
+|---|---|
+| Driven from the main thread with a fragile event loop | Runs inside the speech worker thread, which owns it for the whole utterance |
+| A hang froze the entire application | A hang would affect speech only — and the beep still signals failure |
+| Used for every announcement | Used only when the network is down |
+| One engine reused (fell silent after the first utterance) | A fresh engine per utterance — Day 5's own fix, applied deliberately |
+
+**The library was never the whole problem. The architecture around it was.**
+
+After two consecutive online failures it switches over, retries the failed
+announcement, shows OFFLINE VOICE on screen, and stops beeping. Every sixty
+seconds it tries the online voice again; on success the app says "Back online".
+
+**Bug — the online retry fired instantly, twice over.** First attempt:
+`last_online_retry` started at `0.0`, and since `time.time()` returns a number
+in the billions, "time since the last retry" looked like decades. Second
+attempt: setting it once at startup — but if the app had already run for more
+than sixty seconds before the internet dropped, it still fired immediately.
+**Correct fix:** start the countdown at the moment offline mode begins.
+
+### Testing
+
+| Test | Result |
+|---|---|
+| Video keeps running during a reading | Passed |
+| Second reading refused | "Still reading, please wait" |
+| Announcements batched | One sentence, not seven |
+| Speech failure signalled | Beep every ten seconds, on-screen warning |
+| Offline voice | Switched after two failures; Windows voice audible; no hang |
+| Recovery | "Back online" spoken |
+| Clean exit (Q and Ctrl+C) | No mixer errors, no traceback |
+
+### Known limitations carried forward
+
+- Many specific products (cream tubes, spray bottles, paper cups) are not in Objects365's classes and are not detected; their text is read instead
+- Printed faces on posters or photographs can be announced as "person"
+- The offline voice sounds noticeably more robotic
+- SPACE and I now do the same thing, differing only in that SPACE requires reading mode
+- Diagnostic output prints every detection on each identification — useful while developing, noisy for a demonstration
+- Tested on one machine, with a front-facing laptop webcam
+
+### What was learned
+
+- The same technique can be safe or unsafe depending on what runs inside it
+- A library that failed repeatedly can be reintroduced safely if the architecture around it changes — and it is worth saying why, rather than quietly reversing an earlier decision
+- Slow-feeling software is often queued rather than slow
+- Sorting on the wrong key produces plausible-looking wrong answers
+- A variable meaning "when did this last happen" must be set when it happens; zero means "long ago" and fires immediately
+- Some failures cannot be reported through the channel that failed
+- Saying nothing is sometimes the correct output
+
+**Next goal:** Day 9 — systematic evaluation of the finished application
+against a fixed set of objects and texts, with real numbers rather than
+impressions.

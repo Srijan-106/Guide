@@ -54,7 +54,9 @@ The video window must be focused (clicked) for keys to register.
 | YOLOv8, Open Images (600 classes) | Rejected: announced "Man", "Person" and "Human face" for one person |
 | **YOLO26, Objects365 (365 classes)** | **Chosen:** glasses (0.91), bracelet (0.76), pillow, slippers — one label per object |
 
-**Performance.** 31–43 FPS with detection and OCR loaded, at 1280x720, using about 300 MB of GPU memory on an RTX 5060 Laptop GPU.
+**Performance.** 31–43 FPS with detection and OCR loaded, at 1280x720, using about 300 MB of GPU memory on an RTX 5060 Laptop GPU. Text reading runs on a background thread, so the video does not pause while it works.
+
+**Failure behaviour.** A missing model or busy camera is reported in plain language at startup. A camera lost mid-session is announced and retried for three seconds. If speech itself fails — which cannot be announced by speaking — the app beeps every ten seconds and shows a warning on screen. Without internet it switches to the Windows built-in voice, and returns to the online voice automatically when the network comes back.
 
 Full details: [docs/devlog.md](docs/devlog.md)
 
@@ -62,28 +64,33 @@ Full details: [docs/devlog.md](docs/devlog.md)
 
 ## Known limitations
 
-- **Speech requires an internet connection** (Microsoft Edge voices via `edge-tts`). Images are processed locally; only the text to be spoken is sent to the speech service.
-- **OCR pauses the video** for 1–2 seconds per reading.
-- **Objects at the edge of the frame** can be announced more than once as detection confidence fluctuates.
+- **Speech needs internet for the better voice.** Without it, speech falls back to the Windows built-in voice, which sounds noticeably more robotic. Images are processed locally; only the text to be spoken is sent to the speech service.
+- **Many specific products are not recognised** — cream tubes, spray bottles and paper cups are not among the model's 365 classes. The app reads their text instead, which is usually the more useful half.
 - **Printed faces** on posters or photographs can be announced as "person".
-- **No error handling yet** — if the camera disconnects, the program stops without a spoken explanation.
-- Tested only on Windows 11, with a front-facing laptop webcam.
+- **SPACE and I currently do the same thing**, differing only in that SPACE requires reading mode.
+- **Diagnostic output** prints every detection on each identification — useful while developing, noisy for a demonstration.
+- Tested on one machine, running Windows 11 with a front-facing laptop webcam.
 
 ---
 
 ## Installation
 
-Requires Python 3.10 or newer. An NVIDIA GPU is recommended but not required.
+Requires Python 3.13 and Windows. An NVIDIA GPU is strongly recommended.
 
     git clone https://github.com/Srijan-106/Guide.git
     cd Guide
     python -m venv .venv
     .venv\Scripts\activate
-    python setup.py
 
-`setup.py` checks your system, then installs everything. Full instructions and
-options: [docs/setup.md](docs/setup.md) · Troubleshooting:
-[docs/gpu-setup.md](docs/gpu-setup.md)
+Install PyTorch with GPU support first (it is not on PyPI's default index):
+
+    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+
+Then the remaining dependencies:
+
+    pip install -r requirements.txt
+
+GPU setup, RTX 50-series notes, and Windows Smart App Control issues: [docs/gpu-setup.md](docs/gpu-setup.md)
 
 ## Running
 
@@ -120,6 +127,7 @@ The files in `archive/` were superseded by `src/assistant/main.py`. They are kep
 - **Day 6** — Detection and OCR integrated into one application with mode switching; OCR reading order fixed.
 - **Day 6 (Part A)** — Describe, identify and repeat commands; upgraded to an Objects365-pretrained model (365 classes).
 - **Day 7** — Diagnosed a Windows Smart App Control block, migrated to stable PyTorch 2.11 (CUDA 12.8) — correcting the Day 1 nightly-build choice — and tidied the repository.
+- **Day 8** — Made the application robust: text reading moved to a background thread so the video no longer freezes; speech given priority, batching and cooldowns after a five-second backlog; camera, model and speech failures explained aloud or by beep; and an offline voice fallback for when the internet drops.
 
 Full day-by-day record: [docs/devlog.md](docs/devlog.md)
 
@@ -129,7 +137,7 @@ Full day-by-day record: [docs/devlog.md](docs/devlog.md)
 
 - **Object detection:** [Ultralytics YOLO26](https://docs.ultralytics.com/), pretrained on Objects365
 - **Text reading:** [EasyOCR](https://github.com/JaidedAI/EasyOCR)
-- **Speech:** [edge-tts](https://pypi.org/project/edge-tts/), using Microsoft Edge's online voices
+- **Speech:** [edge-tts](https://pypi.org/project/edge-tts/), using Microsoft Edge's online voices, with [pyttsx3](https://pypi.org/project/pyttsx3/) as an offline fallback
 
 ---
 
@@ -139,8 +147,7 @@ The project began with a structured review of 2024–2026 academic literature an
 
 ## Roadmap
 
-- Non-blocking OCR, so reading text no longer pauses the video
-- Error handling with spoken explanations
-- Fewer repeated announcements for flickering objects
-- Systematic evaluation of the finished app, and a demo
-- Later: voice commands, offline text-to-speech, LLM scene descriptions, Hindi support
+- Systematic evaluation against a fixed set of objects and texts, with real numbers
+- A demo video
+- Put diagnostic output behind a debug switch, and resolve the SPACE / I overlap
+- Later: voice commands, LLM scene descriptions, Hindi support
