@@ -17,7 +17,10 @@ detection keep running while text is being read.
 
 Speech is prioritised: anything the user asks for (M, SPACE, D, I, R)
 jumps ahead of ambient announcements, and ambient announcements that
-cannot be spoken promptly are dropped rather than played late.
+cannot be spoken promptly are dropped rather than played late. If the
+internet drops, speech falls back to the Windows built-in voice; if
+speech fails entirely, the application beeps, since a failure of speech
+cannot be announced by speaking.
 
 Controls:
   M     - switch mode
@@ -45,8 +48,12 @@ from speech.tts import Speaker
 # Settings
 # ---------------------------------------------------------------------
 
+# --- Models ---------------------------------------------------------
+
 # Object detection: YOLO26 pretrained on Objects365 (365 classes)
 DETECTION_MODEL = "models/yolo26m-objv1-150.pt"
+
+# --- Detection thresholds -------------------------------------------
 
 # Threshold for continuous ambient detection. Deliberately high, to stop
 # weak detections flickering in and out and being announced repeatedly.
@@ -57,9 +64,15 @@ DETECTION_CONFIDENCE = 0.65
 # item can accept weaker detections - with honest wording.
 IDENTIFY_CONFIDENCE = 0.30
 
+# A label below this confidence is not worth announcing at all - better
+# to say nothing about the object and just read the text.
+MIN_LABEL_CONFIDENCE = 0.40
+
 # At or above this, the label is stated plainly ("I see cup"); below it,
 # the label is hedged ("This might be cup").
 CONFIDENT_LABEL = 0.50
+
+# --- Announcements ---------------------------------------------------
 
 # How many consecutive frames an object must be missing before it is
 # forgotten and becomes eligible to be announced again.
@@ -76,6 +89,8 @@ AMBIENT_EXPIRY = 6.0
 # if it leaves the frame and comes back. This stops objects at the edge
 # of the frame being announced repeatedly as detection flickers.
 ANNOUNCE_COOLDOWN = 30.0
+
+# --- Choosing the held-up object -------------------------------------
 
 # A held-up object covers the centre of the frame and is not enormous.
 # Anything larger than this share of the frame is background - a wall,
@@ -108,6 +123,22 @@ RECENT_SECONDS = 20.0
 # How long the chosen object stays highlighted on screen
 HIGHLIGHT_SECONDS = 3.0
 
+# --- Failure handling ------------------------------------------------
+
+# If the camera stops returning frames, keep retrying for this long
+# before giving up. A brief glitch should not end the session.
+CAMERA_RETRY_SECONDS = 3.0
+
+# How often to beep while speech is broken, so the user is not left in
+# silence without knowing why. A beep needs no network.
+BEEP_INTERVAL = 10.0
+
+# While using the offline voice, retry the online one this often - the
+# network may have come back.
+ONLINE_RETRY_INTERVAL = 60.0
+
+# --- Camera and modes ------------------------------------------------
+
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
 
@@ -119,19 +150,49 @@ MODE_READING = "reading"
 # Setup
 # ---------------------------------------------------------------------
 
+def fail(message, detail=""):
+    """Report a startup problem in plain language, then exit.
+
+    Startup failures are printed rather than spoken: speech may be the
+    thing that is broken, and the person setting the project up is
+    reading the terminal anyway.
+    """
+    print(f"\nCannot start: {message}")
+    if detail:
+        print(f"  {detail}")
+    sys.exit(1)
+
+
 print("Loading models...")
 
-detector = YOLO(DETECTION_MODEL)
-reader = easyocr.Reader(['en'], gpu=True)
-speaker = Speaker()
+try:
+    detector = YOLO(DETECTION_MODEL)
+except Exception as error:
+    fail(f"the detection model could not be loaded ({DETECTION_MODEL}).",
+         f"Check the file exists, and run from the project folder. [{error}]")
+
+try:
+    reader = easyocr.Reader(['en'], gpu=True)
+except Exception as error:
+    fail("the text reader could not be loaded.",
+         f"EasyOCR downloads its models on first run, so this may be a "
+         f"network problem. [{error}]")
+
+try:
+    speaker = Speaker()
+except Exception as error:
+    fail("the speech system could not start.",
+         f"Check that audio output is available. [{error}]")
 
 camera = cv2.VideoCapture(0)
 camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
 camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
 
 if not camera.isOpened():
-    print("Camera not available")
-    sys.exit(1)
+    speaker.shutdown()
+    fail("the camera could not be opened.",
+         "It may be unplugged, or in use by another program "
+         "(video call, camera app).")
 
 mode = MODE_AMBIENT
 
@@ -141,6 +202,17 @@ last_announcement = ""
 # Set while a text reading is running on the background thread, so a
 # second reading cannot start on top of it
 ocr_busy = threading.Event()
+
+# Speech health, tracked so messages are printed once per change rather
+# than every frame
+speech_broken = False
+was_offline = False
+last_beep = 0.0
+
+# Set to the start time, not 0, so the first online retry waits the full
+# interval. time.time() returns a large number, so 0 would look like a
+# retry that happened decades ago and trigger immediately.
+last_online_retry = time.time()
 
 print("Ready.")
 print("  M     - switch between Ambient and Reading mode")
@@ -167,7 +239,7 @@ prominent_until = 0.0
 
 
 # ---------------------------------------------------------------------
-# Speech helper
+# Speech helpers
 # ---------------------------------------------------------------------
 
 def say(text, priority=False, expires_in=None):
@@ -183,6 +255,21 @@ def say(text, priority=False, expires_in=None):
         return
     last_announcement = text
     speaker.speak(text, priority=priority, expires_in=expires_in)
+
+
+def beep():
+    """A short tone the application generates itself.
+
+    Used to signal that speech has stopped working. It needs no network
+    and no speech engine, so it still works when everything else has
+    failed - which is exactly when the user needs to be told.
+    """
+    try:
+        import winsound
+        winsound.Beep(880, 250)
+    except Exception:
+        # Not Windows, or no sound hardware: fall back to the terminal bell
+        print("\a", end="", flush=True)
 
 
 # ---------------------------------------------------------------------
@@ -302,11 +389,12 @@ def most_prominent_object(result):
     Returns (label, box, confidence), where box is [x1, y1, x2, y2] in
     pixels, or (None, None, None) if nothing suitable was found.
 
-    Three rules, in order:
-      1. Ignore worn items (when the camera faces the user) and anything
-         filling most of the frame.
+    Rules, in order:
+      1. Ignore worn items (when the camera faces the user), detections
+         too uncertain to name, and anything filling most of the frame.
       2. Prefer the SMALLEST box that contains the centre of the frame -
-         the most specific thing under the centre point.
+         the most specific thing under the centre point - with confidence
+         deciding between boxes of near-identical size.
       3. Otherwise take the nearest object to the centre, preferring
          anything that is not established background.
 
@@ -335,6 +423,10 @@ def most_prominent_object(result):
             print(info + "   -> skipped: worn item")
             continue
 
+        if confidence < MIN_LABEL_CONFIDENCE:
+            print(info + "   -> skipped: too uncertain to name")
+            continue
+
         if area > MAX_OBJECT_AREA:
             print(info + "   -> skipped: too large")
             continue
@@ -349,18 +441,26 @@ def most_prominent_object(result):
 
         if abs(x - 0.5) <= width / 2 and abs(y - 0.5) <= height / 2:
             print(info + "   -> candidate: covers centre")
-            covering_centre.append((area, label, pixels, confidence))
+            # Area is rounded to 2 decimals (1% of the frame) so boxes of
+            # near-identical size tie, letting confidence decide. Two
+            # boxes often land on one object - "canned" and "bottle" on a
+            # single can - and without this the smaller, less confident
+            # one wins. -confidence sorts higher values first, since
+            # min() takes the smallest number.
+            covering_centre.append((round(area, 2), -confidence, label,
+                                    pixels, confidence))
         else:
             print(info + "   -> candidate: nearby")
-            nearby.append((is_background, distance, label, pixels, confidence))
+            nearby.append((is_background, round(distance, 2), -confidence,
+                           label, pixels, confidence))
 
     if covering_centre:
-        area, label, pixels, confidence = min(covering_centre)
+        area, _, label, pixels, confidence = min(covering_centre)
         print(f"PROMINENT: {label} (covers centre, conf {confidence:.2f})")
         return label, pixels, confidence
 
     if nearby:
-        background, distance, label, pixels, confidence = min(nearby)
+        background, distance, _, label, pixels, confidence = min(nearby)
         if distance <= MAX_OBJECT_DISTANCE:
             kind = "background" if background else "new"
             print(f"PROMINENT: {label} ({kind}, distance {distance:.2f}, "
@@ -381,9 +481,14 @@ def identify_and_read(frame, start_message):
     """
     global prominent_box, prominent_until
 
-    result = detector.predict(source=frame, conf=IDENTIFY_CONFIDENCE,
-                              verbose=False)[0]
-    label, prominent_box, confidence = most_prominent_object(result)
+    try:
+        result = detector.predict(source=frame, conf=IDENTIFY_CONFIDENCE,
+                                  verbose=False)[0]
+        label, prominent_box, confidence = most_prominent_object(result)
+    except Exception as error:
+        print(f"Detection error: {error}")
+        label, prominent_box, confidence = None, None, None
+
     prominent_until = time.time() + HIGHLIGHT_SECONDS
 
     start_reading(frame, start_message,
@@ -429,7 +534,10 @@ def track_objects(detected_now, announce):
         last_announced[label] = now
         to_announce.append(label)
 
-    if announce and to_announce:
+    # While speech is broken, ambient announcements are pointless: each
+    # one attempts a network call that fails. Deliberate requests are
+    # still attempted, since the user is actively asking.
+    if announce and to_announce and speaker.is_working():
         print(f"ANNOUNCING: {', '.join(to_announce)}")
         say(", ".join(to_announce), expires_in=AMBIENT_EXPIRY)
 
@@ -454,16 +562,44 @@ def track_objects(detected_now, announce):
 say("Ambient mode", priority=True)
 
 try:
+    # Set to the time the camera first stopped responding, so a brief
+    # glitch can be tolerated while a real disconnection ends the session
+    lost_camera_since = None
+
     while True:
         success, frame = camera.read()
-        if not success:
-            break
 
-        results = detector.predict(
-            source=frame,
-            conf=DETECTION_CONFIDENCE,
-            verbose=False
-        )
+        if not success:
+            if lost_camera_since is None:
+                lost_camera_since = time.time()
+                print("Camera stopped responding - retrying...")
+                say("Camera problem", priority=True)
+
+            if time.time() - lost_camera_since > CAMERA_RETRY_SECONDS:
+                print("Camera did not recover.")
+                say("Camera disconnected. Stopping.", priority=True)
+                time.sleep(2)          # let the announcement finish playing
+                break
+
+            time.sleep(0.1)
+            continue
+
+        if lost_camera_since is not None:
+            lost_camera_since = None
+            print("Camera recovered.")
+            say("Camera working again", priority=True)
+
+        # One bad frame should not end the session
+        try:
+            results = detector.predict(
+                source=frame,
+                conf=DETECTION_CONFIDENCE,
+                verbose=False
+            )
+        except Exception as error:
+            print(f"Detection error: {error}")
+            continue
+
         annotated_frame = results[0].plot()
 
         detected_now = set()
@@ -500,6 +636,53 @@ try:
                 annotated_frame, "READING TEXT...", (10, 280),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2
             )
+
+        # --- Speech health ---------------------------------------------
+        # Three states: working online, working offline with the Windows
+        # voice, or not working at all - which cannot be announced by
+        # speaking, so a beep is used instead.
+
+        if speaker.is_offline():
+            if not was_offline:
+                was_offline = True
+                # Start the retry countdown now. Setting it only at
+                # startup meant that if the app had already been running
+                # longer than the interval, the first retry fired
+                # instantly.
+                last_online_retry = time.time()
+                print("Using the offline voice (no internet).")
+
+            cv2.putText(
+                annotated_frame, "OFFLINE VOICE", (10, 320),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2
+            )
+
+            # Periodically check whether the network has returned
+            if time.time() - last_online_retry > ONLINE_RETRY_INTERVAL:
+                last_online_retry = time.time()
+                speaker.try_online_again()
+
+        elif was_offline:
+            was_offline = False
+            print("Back to the online voice.")
+            say("Back online", priority=True)
+
+        if not speaker.is_working():
+            if not speech_broken:
+                speech_broken = True
+                print(f"SPEECH FAILING: {speaker.failure_reason()}")
+
+            if time.time() - last_beep > BEEP_INTERVAL:
+                last_beep = time.time()
+                beep()
+
+            cv2.putText(
+                annotated_frame, "SPEECH NOT WORKING", (10, 320),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2
+            )
+        elif speech_broken:
+            speech_broken = False
+            print("Speech working again.")
 
         # On-screen control reminder. Drawn one line at a time because
         # OpenCV has no multi-line text support.
@@ -559,7 +742,11 @@ try:
         elif key == ord('q'):
             break
 
+except KeyboardInterrupt:
+    print("\nStopped by user (Ctrl+C).")
+
 finally:
+    print("Shutting down...")
     camera.release()
     cv2.destroyAllWindows()
     speaker.shutdown()
