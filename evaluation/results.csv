@@ -1,0 +1,40 @@
+timestamp,kind,item,lighting,distance,verdict,heard,notes
+2026-09-29T00:34:17,detection,bottle,bright,close,correct,bottle,"ANNOUNCING: cabinet/shelf, glasses, person"
+2026-09-29T00:37:11,detection,bottle,bright,close,correct,bottle,
+2026-09-29T00:38:08,detection,cup,bright,close,missed,cup,detected bu didnt speak
+2026-09-29T00:38:49,detection,book,bright,close,missed,,
+2026-09-29T00:39:09,detection,phone,bright,close,correct,cell phone,
+2026-09-29T00:39:57,detection,cream tube,bright,close,missed,nothing,not detected
+2026-09-29T00:40:36,detection,spray bottle,bright,close,missed,,
+2026-09-29T00:41:03,detection,pen,bright,close,missed,nothing,not detected
+2026-09-29T00:41:18,detection,headphones,bright,close,correct,,
+2026-09-29T00:41:31,detection,keyboard,bright,close,correct,,
+2026-09-29T00:42:28,detection,bottle,normal,close,correct,,
+2026-09-29T00:42:37,detection,cup,normal,close,correct,,
+2026-09-29T00:43:27,detection,book,normal,close,correct,book,detected but laggy
+2026-09-29T00:43:44,detection,phone,normal,close,correct,,
+2026-09-29T00:44:13,detection,cream tube,normal,close,missed,,
+2026-09-29T00:44:18,detection,spray bottle,normal,close,missed,,
+2026-09-29T00:44:20,detection,pen,normal,close,missed,,
+2026-09-29T00:44:30,detection,headphones,normal,close,correct,,
+2026-09-29T00:45:18,detection,phone,dim,close,correct,,
+2026-09-29T00:45:32,detection,headphones,dim,close,correct,,
+2026-09-29T00:45:44,detection,keyboard,dim,close,correct,,
+2026-09-29T00:46:17,identify,bottle,normal,close,correct,,
+2026-09-29T00:46:39,identify,cup,normal,close,correct,,
+2026-09-29T00:47:13,identify,book,normal,close,no label,,
+2026-09-29T00:47:44,identify,phone,normal,close,correct,,
+2026-09-29T00:47:57,identify,spray bottle,normal,close,no label,,
+2026-09-29T00:48:01,identify,pen,normal,close,no label,,
+2026-09-29T00:48:39,identify,headphones,normal,close,wrong,,
+2026-09-29T00:49:19,identify,keyboard,normal,close,correct,,
+2026-09-29T00:49:41,reading,"BOLDFIT bottle (large, metallic)",normal,close,exact,,
+2026-09-29T00:50:17,reading,"Book cover (large, multi-line)",normal,close,partial,,
+2026-09-29T00:50:35,reading,Cream tube label (small print),normal,close,exact,,
+2026-09-29T00:51:19,reading,"Product back label (small, dense)",normal,close,partial,,
+2026-09-29T00:52:10,reading,Laptop or phone screen (backlit),normal,close,partial,,
+2026-09-29T00:52:24,reading,"Drink can (curved, shiny)",normal,close,exact,,
+2026-09-29T00:58:27,detection,keyboard,normal,close,correct,,
+2026-09-29T00:58:45,detection,bottle,dim,close,correct,,
+2026-09-29T00:59:30,detection,cup,dim,close,correct,,partally
+2026-09-29T01:00:14,identify,cream tube,normal,close,no label,,4

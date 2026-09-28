@@ -62,6 +62,32 @@ Full details: [docs/devlog.md](docs/devlog.md)
 
 ---
 
+## Measured results
+
+39 tests, recorded as they were run, on a front-facing laptop webcam in one room.
+Method and full caveats: [docs/devlog.md](docs/devlog.md) (Day 9).
+
+**Object detection is reliable for common objects and blind to items outside the
+model's vocabulary.** Every failure was silence, never a wrong answer:
+
+| Always detected (13/13) | Never detected (0/6) |
+|---|---|
+| bottle, phone, headphones, keyboard | cream tube, spray bottle, pen |
+
+The second group is not in Objects365's 365 classes, so the app reads their text
+instead — which for a product is usually the more useful half.
+
+| Feature | Result | Tests |
+|---|---|---|
+| Text reading | 100% usable (3 exact, 3 partial) | 6 |
+| Object detection | 66.7% | 24 |
+| Object identification | 44.4% (4 correct, 4 no label, 1 wrong) | 9 |
+
+**What these numbers do not show:** reading was tested 6 times of a planned 16,
+and handwritten notes were never tested — handwriting is significantly harder
+for OCR. The per-lighting breakdown is not reported, because too few tests ran
+in each condition for it to mean anything.
+
 ## Known limitations
 
 - **Speech needs internet for the better voice.** Without it, speech falls back to the Windows built-in voice, which sounds noticeably more robotic. Images are processed locally; only the text to be spoken is sent to the speech service.
@@ -69,6 +95,7 @@ Full details: [docs/devlog.md](docs/devlog.md)
 - **Printed faces** on posters or photographs can be announced as "person".
 - **SPACE and I currently do the same thing**, differing only in that SPACE requires reading mode.
 - **Diagnostic output** prints every detection on each identification — useful while developing, noisy for a demonstration.
+- **Headphones cannot be identified deliberately** while `CAMERA_FACES_USER` is true: worn items are excluded from the held-object choice, which prevents a common wrong answer at the cost of this rare one. Setting it to false removes the conflict.
 - Tested on one machine, running Windows 11 with a front-facing laptop webcam.
 
 ---
@@ -107,6 +134,8 @@ GPU setup, RTX 50-series notes, and Windows Smart App Control issues: [docs/gpu-
     ├── archive/                   deprecated standalone scripts, kept for reference
     │   ├── detection/detect.py    first detection program (Days 2-5)
     │   └── ocr/                   first OCR programs (Days 4-5)
+    ├── src/evaluation/            test recorder and analysis scripts
+    ├── evaluation/results.csv     recorded test results
     ├── models/                    pretrained model files
     ├── docs/                      development log, GPU setup, images
     └── requirements.txt
@@ -128,6 +157,7 @@ The files in `archive/` were superseded by `src/assistant/main.py`. They are kep
 - **Day 6 (Part A)** — Describe, identify and repeat commands; upgraded to an Objects365-pretrained model (365 classes).
 - **Day 7** — Diagnosed a Windows Smart App Control block, migrated to stable PyTorch 2.11 (CUDA 12.8) — correcting the Day 1 nightly-build choice — and tidied the repository.
 - **Day 8** — Made the application robust: text reading moved to a background thread so the video no longer freezes; speech given priority, batching and cooldowns after a five-second backlog; camera, model and speech failures explained aloud or by beep; and an offline voice fallback for when the internet drops.
+- **Day 9** — Systematic evaluation: 39 recorded tests across detection, identification and reading, with the results and their limits documented.
 
 Full day-by-day record: [docs/devlog.md](docs/devlog.md)
 
@@ -147,7 +177,7 @@ The project began with a structured review of 2024–2026 academic literature an
 
 ## Roadmap
 
-- Systematic evaluation against a fixed set of objects and texts, with real numbers
+- The remaining reading tests, including handwriting
 - A demo video
 - Put diagnostic output behind a debug switch, and resolve the SPACE / I overlap
 - Later: voice commands, LLM scene descriptions, Hindi support

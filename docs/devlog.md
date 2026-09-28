@@ -973,3 +973,102 @@ than sixty seconds before the internet dropped, it still fired immediately.
 **Next goal:** Day 9 — systematic evaluation of the finished application
 against a fixed set of objects and texts, with real numbers rather than
 impressions.
+
+---
+
+## Day 9 — [28–29 sept]
+
+**Goal:** Replace "I tried it and it seemed to work" with measured results — a
+fixed set of objects and texts, tested under stated conditions, recorded as the
+tests happen and analysed afterwards.
+
+### 1. Method
+
+Three features were scored separately, because they fail in different ways:
+
+| Feature | Question | Verdicts |
+|---|---|---|
+| Object detection (ambient) | Does it announce what is actually there? | correct / wrong / missed |
+| Identification (I key) | Does it name the held-up object correctly? | correct / hedged right / wrong / no label |
+| Text reading (SPACE) | Does it read the text correctly? | exact / partial / wrong / nothing |
+
+Rules set **before** testing began:
+
+- The object and text lists were fixed in advance. Swapping in easier items after seeing results is how an evaluation stops meaning anything.
+- Ten objects deliberately included known weak cases — a cream tube, a spray bottle and a pen — all of which had failed in earlier informal testing.
+- Results were recorded at the moment of each test, not reconstructed afterwards.
+- A synonym counts as correct: "canned" for a drinks can is a right answer.
+
+Two new scripts: `src/evaluation/record_results.py` presents each test in a
+fixed order and appends a row to a CSV after every answer, so a session can be
+stopped and resumed; `src/evaluation/analyse_results.py` reports per-feature,
+per-item and per-condition results.
+
+**Bug:** the recorder wrote the CSV header only when the file did not exist.
+The file had been created earlier but left empty, so the header was skipped and
+analysis failed with `KeyError: 'kind'`. Fixed by treating an empty file as new:
+
+    new_file = not OUTPUT.exists() or OUTPUT.stat().st_size == 0
+
+### 2. Results (39 tests)
+
+| Feature | Result | Tests |
+|---|---|---|
+| Text reading | 100% (3 exact, 3 partial) | 6 |
+| Object detection | 66.7% | 24 |
+| Object identification | 44.4% | 9 |
+
+**The clearest finding is not the percentage but the split:**
+
+| Always detected (13/13) | Never detected (0/6) |
+|---|---|
+| bottle, phone, headphones, keyboard | cream tube, spray bottle, pen |
+
+Every failure was recorded as **missed**, never as **wrong**. The model does not
+misidentify these items — it does not see them at all. They are not among
+Objects365's 365 classes. Only `cup` was mixed, at 2 of 3.
+
+"66.7% accurate" invites the question "66.7% of what?". "Reliable for common
+objects, blind to items outside its vocabulary" answers it.
+
+Identification: 4 correct, 4 "no label", 1 wrong. **"No label" is not a wrong
+answer** — the app deliberately says nothing about an object it cannot name
+confidently, and reads the text instead, which for a product is usually the more
+useful half.
+
+### 3. A design conflict found by testing
+
+Headphones were detected correctly in every ambient test (3/3), but
+identification named them **wrongly**.
+
+The cause is a Day 8 rule: while the camera faces the user, worn items — person,
+glasses, hat, headphones — are excluded from being chosen as the held-up object,
+because a laptop webcam always has them in shot. When headphones are
+deliberately held up, that same rule excludes them and something else is chosen.
+
+This is a genuine trade-off, not a bug: the rule prevents a common wrong answer
+and causes a rare one. Setting `CAMERA_FACES_USER = False` — correct for an
+outward-facing camera, which is the real use case — removes the conflict.
+
+### 4. What these numbers do not show
+
+- **Reading is under-tested:** 6 of a planned 16. 100% on six tests is promising, not proven.
+- **Handwritten notes were never tested** — none were available. Handwriting is significantly harder for OCR, so this is a real gap.
+- **The chair was not tested** — none available in view of the camera.
+- **The lighting breakdown is meaningless.** Dim light shows 100%, but on five tests, and those happened to involve items that always work. It reflects which items were tested in each condition, not the effect of lighting.
+- **One machine, one room, one camera.**
+
+Reporting these limits matters as much as reporting the results. A number
+without its conditions is not evidence.
+
+### What was learned
+
+- An overall percentage can hide the real finding: 66.7% concealed a clean split between items that always work and items that never do
+- The kind of failure matters more than the rate — every failure here was silence, not a wrong answer, which is far safer for a blind user
+- Fixing the test set before testing is what keeps the result honest
+- Recording results as they happen avoids remembering favourably
+- Testing finds design conflicts, not just bugs
+- A test that was not run must be reported as not run
+
+**Next goal:** Day 10 — a demo video, the remaining reading tests including
+handwriting, and a final documentation pass.
