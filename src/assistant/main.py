@@ -37,10 +37,15 @@ import threading
 import time
 
 import cv2
-import easyocr
 from ultralytics import YOLO
 
 sys.path.insert(0, "src")
+
+# easyocr must be imported after the line above: it does
+# `from bidi import get_display`, which is satisfied by the stub in
+# src/bidi/. See that file for why the real package was removed.
+import easyocr
+
 from speech.tts import Speaker
 
 
