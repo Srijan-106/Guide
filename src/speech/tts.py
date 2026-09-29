@@ -35,7 +35,7 @@ import pyttsx3
 
 
 class Speaker:
-    def __init__(self, voice="en-US-AriaNeural"):
+    def __init__(self, voice="en-IN-NeerjaNeural"):
         self.voice = voice
 
         # Pending announcements, each (text, expiry_time_or_None).
