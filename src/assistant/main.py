@@ -1,7 +1,7 @@
 """
 VisionAssist - main application.
 
-Two modes, switched with the M key:
+Two modes, switched with the M key or by voice:
 
   AMBIENT MODE (default)
     Object detection runs continuously and announces newly-appeared
@@ -12,22 +12,23 @@ Two modes, switched with the M key:
     text and presses SPACE to have it read aloud. This is deliberate
     inquiry - "what does this say".
 
-Text reading runs on a background thread, so the video and object
-detection keep running while text is being read.
+Text reading and speech recognition both run on background threads, so
+the video and object detection keep running while they work.
 
-Speech is prioritised: anything the user asks for (M, SPACE, D, I, R)
-jumps ahead of ambient announcements, and ambient announcements that
-cannot be spoken promptly are dropped rather than played late. If the
-internet drops, speech falls back to the Windows built-in voice; if
-speech fails entirely, the application beeps, since a failure of speech
-cannot be announced by speaking.
+Speech is prioritised: anything the user asks for jumps ahead of ambient
+announcements, and ambient announcements that cannot be spoken promptly
+are dropped rather than played late. If the internet drops, speech falls
+back to the Windows built-in voice; if speech fails entirely, the
+application beeps, since a failure of speech cannot be announced by
+speaking.
 
 Controls:
   M     - switch mode
-  SPACE - read text (Reading mode)
+  SPACE - read all text (Reading mode)
   D     - describe everything currently visible
   I     - identify the object being held up, and read any text on it
   R     - repeat the last thing said
+  V     - voice command: press to start, speak, press again to stop
   Q     - quit
 """
 
@@ -47,6 +48,7 @@ sys.path.insert(0, "src")
 import easyocr
 
 from speech.tts import Speaker
+from voice.listener import VoiceListener, match_command
 
 
 # ---------------------------------------------------------------------
@@ -58,19 +60,26 @@ from speech.tts import Speaker
 # Object detection: YOLO26 pretrained on Objects365 (365 classes)
 DETECTION_MODEL = "models/yolo26m-objv1-150.pt"
 
+# Speech recognition: Whisper, running locally on the GPU. "base" was
+# accurate on all five test commands; move to "small" if that changes.
+VOICE_MODEL = "base"
+
+# --- Diagnostics -----------------------------------------------------
+
+# Every detection, with the reason it was kept or skipped, and every OCR
+# word with its confidence. Invaluable while developing, distracting in
+# a demonstration - set to False before recording one.
+DEBUG = True
+
 # --- Detection thresholds -------------------------------------------
 
 # Threshold for continuous ambient detection. Deliberately high, to stop
 # weak detections flickering in and out and being announced repeatedly.
 DETECTION_CONFIDENCE = 0.65
 
-# Diagnostic output: every detection with the reason it was kept or
-# skipped. Invaluable while developing, distracting in a demonstration.
-DEBUG = False
-
-# When the user presses I or SPACE, detection runs once more on that
-# frame at this lower threshold. A deliberate question about one held-up
-# item can accept weaker detections - with honest wording.
+# When the user asks about one held-up item, detection runs again on that
+# frame at this lower threshold. A deliberate question can accept weaker
+# detections - with honest wording.
 IDENTIFY_CONFIDENCE = 0.30
 
 # A label below this confidence is not worth announcing at all - better
@@ -87,12 +96,10 @@ CONFIDENT_LABEL = 0.50
 # forgotten and becomes eligible to be announced again.
 FRAMES_BEFORE_GONE = 150
 
-# Maximum number of text fragments spoken per OCR capture.
+# Words spoken per reading. I answers "what is this?", where a short
+# summary is better; SPACE reads a document or sign, where more text
+# matters and an object name adds nothing.
 MAX_SPOKEN_WORDS = 6
-
-# SPACE reads a document or sign, where more text matters and an object
-# name adds nothing. I answers "what is this?", where a short summary is
-# better than a long reading.
 MAX_WORDS_READING = 20
 
 # Ambient announcements are dropped if they cannot be spoken within this
@@ -198,6 +205,14 @@ except Exception as error:
     fail("the speech system could not start.",
          f"Check that audio output is available. [{error}]")
 
+# Voice commands are optional: if the microphone or the model is
+# unavailable, the application still works with the keyboard.
+try:
+    voice = VoiceListener(VOICE_MODEL)
+except Exception as error:
+    print(f"Voice commands unavailable: {error}")
+    voice = None
+
 camera = cv2.VideoCapture(0)
 camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
 camera.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
@@ -222,18 +237,20 @@ ocr_busy = threading.Event()
 speech_broken = False
 was_offline = False
 last_beep = 0.0
+last_online_retry = 0.0
 
-# Set to the start time, not 0, so the first online retry waits the full
-# interval. time.time() returns a large number, so 0 would look like a
-# retry that happened decades ago and trigger immediately.
-last_online_retry = time.time()
+# Voice command state
+voice_active = False        # True while recording
+pending_command = None      # set by the voice thread, run by the main loop
+current_frame = None        # newest frame, for voice-triggered commands
 
 print("Ready.")
 print("  M     - switch between Ambient and Reading mode")
-print("  SPACE - read text (Reading mode only)")
+print("  SPACE - read all text (Reading mode only)")
 print("  D     - describe what is currently visible")
 print("  I     - identify the held-up object and read its text")
 print("  R     - repeat last announcement")
+print("  V     - voice command (press to start, press again to stop)")
 print("  Q     - quit")
 
 
@@ -274,9 +291,10 @@ def say(text, priority=False, expires_in=None):
 def beep():
     """A short tone the application generates itself.
 
-    Used to signal that speech has stopped working. It needs no network
-    and no speech engine, so it still works when everything else has
-    failed - which is exactly when the user needs to be told.
+    Used to signal that speech has stopped working, and to confirm that
+    voice recording has started. It needs no network and no speech
+    engine, so it still works when everything else has failed - which is
+    exactly when the user needs to be told.
     """
     try:
         import winsound
@@ -290,17 +308,20 @@ def beep():
 # Text reading
 # ---------------------------------------------------------------------
 
-def read_text_from_frame(frame,  max_words=MAX_SPOKEN_WORDS):
+def read_text_from_frame(frame, max_words=MAX_SPOKEN_WORDS):
     """Run OCR on a frame and return the text worth speaking,
     in approximate reading order."""
     results = reader.readtext(frame)
 
-    print("Extracted text:")
+    if DEBUG:
+        print("Extracted text:")
+
     kept = []
 
     for result in results:
         bounding_box, text, confidence = result
-        print(f"  {text}  (confidence: {confidence:.2f})")
+        if DEBUG:
+            print(f"  {text}  (confidence: {confidence:.2f})")
 
         cleaned = text.strip()
 
@@ -341,6 +362,9 @@ def start_reading(frame, start_message, on_done, max_words=MAX_SPOKEN_WORDS):
     start_message - spoken immediately, e.g. "Reading"
     on_done       - called with the list of words once reading finishes
     """
+    if frame is None:
+        return
+
     if ocr_busy.is_set():
         say("Still reading, please wait", priority=True)
         return
@@ -349,7 +373,7 @@ def start_reading(frame, start_message, on_done, max_words=MAX_SPOKEN_WORDS):
     say(start_message, priority=True)
 
     # The main loop replaces `frame` on every iteration, so the thread
-    # must work on its own snapshot taken at the moment of the keypress
+    # must work on its own snapshot taken at the moment of the request
     snapshot = frame.copy()
 
     def work():
@@ -501,12 +525,15 @@ def most_prominent_object(result):
 
 
 def identify_and_read(frame):
-    """I key: name the held-up object and read a short amount of its text.
+    """Name the held-up object and read a short amount of its text.
 
     Answers "what is this?" - so the object name matters, and a brief
     reading is better than a long one.
     """
     global prominent_box, prominent_until
+
+    if frame is None:
+        return
 
     try:
         result = detector.predict(source=frame, conf=IDENTIFY_CONFIDENCE,
@@ -523,13 +550,12 @@ def identify_and_read(frame):
 
 
 def read_document(frame):
-    """SPACE key: read the text only, with no object name.
+    """Read the text only, with no object name.
 
     Answers "read this to me" - for documents, signs and letters, where
     the object is obvious and the text is the point. No detection runs,
     and the word limit is higher.
     """
-
     def speak_text(words):
         if words:
             say(", ".join(words), priority=True)
@@ -601,6 +627,99 @@ def track_objects(detected_now, announce):
 
 
 # ---------------------------------------------------------------------
+# Commands, from keys or from speech
+# ---------------------------------------------------------------------
+
+def run_command(name):
+    """Run a command. Returns False if the application should stop."""
+    global mode
+
+    if name == "read":
+        if mode != MODE_READING:
+            mode = MODE_READING
+            print("Switched to READING mode")
+        read_document(current_frame)
+
+    elif name == "identify":
+        identify_and_read(current_frame)
+
+    elif name == "describe":
+        describe_scene()
+
+    elif name == "repeat":
+        if last_announcement:
+            print(f"REPEATING: {last_announcement}")
+            speaker.speak(last_announcement, priority=True)
+        else:
+            speaker.speak("Nothing to repeat", priority=True)
+
+    elif name == "reading_mode":
+        mode = MODE_READING
+        print("Switched to READING mode")
+        say("Reading mode", priority=True)
+
+    elif name == "ambient_mode":
+        mode = MODE_AMBIENT
+        print("Switched to AMBIENT mode")
+        say("Ambient mode", priority=True)
+
+    elif name == "quit":
+        say("Stopping", priority=True)
+        time.sleep(1.5)           # let the announcement finish
+        return False
+
+    return True
+
+
+def handle_voice_key():
+    """Start or stop voice recording, depending on the current state.
+
+    OpenCV cannot detect a key being released, so V toggles: press to
+    start, press again to stop.
+    """
+    global voice_active
+
+    if voice is None:
+        say("Voice commands are not available", priority=True)
+        return
+
+    if not voice.recording:
+        beep()                       # instant, unlike a spoken prompt
+        voice.start_recording()
+        voice_active = True
+        print("LISTENING...")
+        return
+
+    audio = voice.stop_recording()
+    voice_active = False
+
+    if audio is None:
+        print("  nothing recorded")
+        return
+
+    print("  transcribing...")
+
+    def on_transcribed(text):
+        global pending_command
+        if not text:
+            say("I did not hear anything", priority=True)
+            return
+
+        print(f"  heard: {text!r}")
+        command = match_command(text)
+
+        if command:
+            # The command is run by the main loop, not here: this runs on
+            # a background thread, and the commands use camera frames and
+            # change mode state that belong to the loop.
+            pending_command = command
+        else:
+            say(f"I heard {text}. I do not know that command.", priority=True)
+
+    voice.transcribe_in_background(audio, on_transcribed)
+
+
+# ---------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------
 
@@ -647,6 +766,10 @@ try:
 
         annotated_frame = results[0].plot()
 
+        # Keep the newest frame available to voice commands, which arrive
+        # from a background thread rather than from a keypress
+        current_frame = frame
+
         detected_now = set()
         for box in results[0].boxes:
             class_id = int(box.cls[0])
@@ -678,7 +801,7 @@ try:
         # Visible sign that a reading is in progress
         if ocr_busy.is_set():
             cv2.putText(
-                annotated_frame, "READING TEXT...", (10, 280),
+                annotated_frame, "READING TEXT...", (10, 310),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2
             )
 
@@ -691,18 +814,17 @@ try:
             if not was_offline:
                 was_offline = True
                 # Start the retry countdown now. Setting it only at
-                # startup meant that if the app had already been running
-                # longer than the interval, the first retry fired
+                # startup meant that if the application had already been
+                # running longer than the interval, the first retry fired
                 # instantly.
                 last_online_retry = time.time()
                 print("Using the offline voice (no internet).")
 
             cv2.putText(
-                annotated_frame, "OFFLINE VOICE", (10, 320),
+                annotated_frame, "OFFLINE VOICE", (10, 345),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2
             )
 
-            # Periodically check whether the network has returned
             if time.time() - last_online_retry > ONLINE_RETRY_INTERVAL:
                 last_online_retry = time.time()
                 speaker.try_online_again()
@@ -722,21 +844,29 @@ try:
                 beep()
 
             cv2.putText(
-                annotated_frame, "SPEECH NOT WORKING", (10, 320),
+                annotated_frame, "SPEECH NOT WORKING", (10, 345),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2
             )
         elif speech_broken:
             speech_broken = False
             print("Speech working again.")
 
+        # Visible sign that voice recording is in progress
+        if voice_active:
+            cv2.putText(
+                annotated_frame, "LISTENING...", (10, 380),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2
+            )
+
         # On-screen control reminder. Drawn one line at a time because
         # OpenCV has no multi-line text support.
         controls = [
             "M - switch mode",
-            "SPACE - read text",
+            "SPACE - read all text",
             "D - describe scene",
-            "I - identify object",
+            "I - what is this?",
             "R - repeat",
+            "V - voice command",
             "Q - quit",
         ]
 
@@ -747,6 +877,13 @@ try:
             )
 
         cv2.imshow("VisionAssist", annotated_frame)
+
+        # Commands recognised from speech are run here, on the main loop,
+        # because they use the camera frame and change the mode
+        if pending_command:
+            command, pending_command = pending_command, None
+            if not run_command(command):
+                break
 
         key = cv2.waitKey(1) & 0xFF
 
@@ -761,7 +898,7 @@ try:
                 print("Switched to AMBIENT mode")
                 say("Ambient mode", priority=True)
 
-        # --- SPACE = read text (Reading mode only) ---
+        # --- SPACE = read all text (Reading mode only) ---
         elif key == ord(' '):
             if mode == MODE_READING:
                 read_document(frame)
@@ -784,6 +921,10 @@ try:
             else:
                 speaker.speak("Nothing to repeat", priority=True)
 
+        # --- V = voice command ---
+        elif key == ord('v'):
+            handle_voice_key()
+
         elif key == ord('q'):
             break
 
@@ -792,6 +933,8 @@ except KeyboardInterrupt:
 
 finally:
     print("Shutting down...")
+    if voice is not None and voice.recording:
+        voice.stop_recording()
     camera.release()
     cv2.destroyAllWindows()
     speaker.shutdown()
