@@ -64,6 +64,10 @@ DETECTION_MODEL = "models/yolo26m-objv1-150.pt"
 # weak detections flickering in and out and being announced repeatedly.
 DETECTION_CONFIDENCE = 0.65
 
+# Diagnostic output: every detection with the reason it was kept or
+# skipped. Invaluable while developing, distracting in a demonstration.
+DEBUG = False
+
 # When the user presses I or SPACE, detection runs once more on that
 # frame at this lower threshold. A deliberate question about one held-up
 # item can accept weaker detections - with honest wording.
@@ -85,6 +89,11 @@ FRAMES_BEFORE_GONE = 150
 
 # Maximum number of text fragments spoken per OCR capture.
 MAX_SPOKEN_WORDS = 6
+
+# SPACE reads a document or sign, where more text matters and an object
+# name adds nothing. I answers "what is this?", where a short summary is
+# better than a long reading.
+MAX_WORDS_READING = 20
 
 # Ambient announcements are dropped if they cannot be spoken within this
 # many seconds - a late announcement describes a scene that has changed.
@@ -281,7 +290,7 @@ def beep():
 # Text reading
 # ---------------------------------------------------------------------
 
-def read_text_from_frame(frame):
+def read_text_from_frame(frame,  max_words=MAX_SPOKEN_WORDS):
     """Run OCR on a frame and return the text worth speaking,
     in approximate reading order."""
     results = reader.readtext(frame)
@@ -319,13 +328,13 @@ def read_text_from_frame(frame):
 
     kept.sort(key=reading_order)
 
-    final_words = [result[1].strip() for result in kept[:MAX_SPOKEN_WORDS]]
+    final_words = [result[1].strip() for result in kept[:max_words]]
     print(f"SPEAKING IN ORDER: {final_words}")
 
     return final_words
 
 
-def start_reading(frame, start_message, on_done):
+def start_reading(frame, start_message, on_done, max_words=MAX_SPOKEN_WORDS):
     """Read text on a background thread, so the video keeps running.
 
     frame         - the frame to read, copied so the loop can move on
@@ -345,7 +354,7 @@ def start_reading(frame, start_message, on_done):
 
     def work():
         try:
-            words = read_text_from_frame(snapshot)
+            words = read_text_from_frame(snapshot, max_words)
             on_done(words)
         except Exception as error:
             print(f"OCR error: {error}")
@@ -403,14 +412,15 @@ def most_prominent_object(result):
       3. Otherwise take the nearest object to the centre, preferring
          anything that is not established background.
 
-    Every detection is printed with the reason it was kept or skipped,
-    so the choice can be checked rather than guessed.
+    With DEBUG on, every detection is printed with the reason it was kept
+    or skipped, so the choice can be checked rather than guessed.
     """
     now = time.time()
     covering_centre = []
     nearby = []
 
-    print(f"IDENTIFY: {len(result.boxes)} detections in this frame")
+    if DEBUG:
+        print(f"IDENTIFY: {len(result.boxes)} detections in this frame")
 
     for box_n, box_px, class_id, conf in zip(result.boxes.xywhn,
                                              result.boxes.xyxy,
@@ -424,16 +434,24 @@ def most_prominent_object(result):
         info = (f"  {label:<15} conf {confidence:.2f}   "
                 f"area {area * 100:3.0f}%   distance {distance:.2f}")
 
+        # Note on indentation: each `continue` sits OUTSIDE its `if DEBUG`
+        # block. Indenting it inside would mean the object is only skipped
+        # when debugging is on - so turning DEBUG off would silently change
+        # which object gets chosen.
+
         if CAMERA_FACES_USER and label.lower() in IGNORE_FOR_IDENTIFY:
-            print(info + "   -> skipped: worn item")
+            if DEBUG:
+                print(info + "   -> skipped: worn item")
             continue
 
         if confidence < MIN_LABEL_CONFIDENCE:
-            print(info + "   -> skipped: too uncertain to name")
+            if DEBUG:
+                print(info + "   -> skipped: too uncertain to name")
             continue
 
         if area > MAX_OBJECT_AREA:
-            print(info + "   -> skipped: too large")
+            if DEBUG:
+                print(info + "   -> skipped: too large")
             continue
 
         pixels = [int(v) for v in box_px.tolist()]
@@ -445,7 +463,8 @@ def most_prominent_object(result):
                          now - first_seen.get(label, now) > RECENT_SECONDS)
 
         if abs(x - 0.5) <= width / 2 and abs(y - 0.5) <= height / 2:
-            print(info + "   -> candidate: covers centre")
+            if DEBUG:
+                print(info + "   -> candidate: covers centre")
             # Area is rounded to 2 decimals (1% of the frame) so boxes of
             # near-identical size tie, letting confidence decide. Two
             # boxes often land on one object - "canned" and "bottle" on a
@@ -455,10 +474,13 @@ def most_prominent_object(result):
             covering_centre.append((round(area, 2), -confidence, label,
                                     pixels, confidence))
         else:
-            print(info + "   -> candidate: nearby")
+            if DEBUG:
+                print(info + "   -> candidate: nearby")
             nearby.append((is_background, round(distance, 2), -confidence,
                            label, pixels, confidence))
 
+    # The PROMINENT lines always print: one line, and useful even in a
+    # demonstration, since it shows what the announcement was based on.
     if covering_centre:
         area, _, label, pixels, confidence = min(covering_centre)
         print(f"PROMINENT: {label} (covers centre, conf {confidence:.2f})")
@@ -478,11 +500,11 @@ def most_prominent_object(result):
     return None, None, None
 
 
-def identify_and_read(frame, start_message):
-    """Choose the held-up object, then read its text in the background.
+def identify_and_read(frame):
+    """I key: name the held-up object and read a short amount of its text.
 
-    Runs its own detection pass at IDENTIFY_CONFIDENCE, lower than the
-    ambient threshold, since this is a deliberate question about one item.
+    Answers "what is this?" - so the object name matters, and a brief
+    reading is better than a long one.
     """
     global prominent_box, prominent_until
 
@@ -496,8 +518,26 @@ def identify_and_read(frame, start_message):
 
     prominent_until = time.time() + HIGHLIGHT_SECONDS
 
-    start_reading(frame, start_message,
+    start_reading(frame, "Identifying",
                   lambda words: speak_identity(words, label, confidence))
+
+
+def read_document(frame):
+    """SPACE key: read the text only, with no object name.
+
+    Answers "read this to me" - for documents, signs and letters, where
+    the object is obvious and the text is the point. No detection runs,
+    and the word limit is higher.
+    """
+
+    def speak_text(words):
+        if words:
+            say(", ".join(words), priority=True)
+        else:
+            say("No readable text found", priority=True)
+
+    start_reading(frame, "Reading", speak_text,
+                  max_words=MAX_WORDS_READING)
 
 
 # ---------------------------------------------------------------------
@@ -724,7 +764,7 @@ try:
         # --- SPACE = read text (Reading mode only) ---
         elif key == ord(' '):
             if mode == MODE_READING:
-                identify_and_read(frame, "Reading")
+                read_document(frame)
             else:
                 say("Switch to reading mode first", priority=True)
 
@@ -734,7 +774,7 @@ try:
 
         # --- I = identify the held-up object and its text ---
         elif key == ord('i'):
-            identify_and_read(frame, "Identifying")
+            identify_and_read(frame)
 
         # --- R = repeat last announcement ---
         elif key == ord('r'):
