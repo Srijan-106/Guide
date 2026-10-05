@@ -30,7 +30,10 @@ Controls:
   I     - identify the object being held up, and read any text on it
   R     - repeat the last thing said
   V     - speak: a command, or any question about what the camera sees
+  L     - switch language: English / Hindi
   Q     - quit
+
+Hindi mode is Hinglish: sentences in Hindi, object names in English.
 """
 
 import math
@@ -50,6 +53,7 @@ sys.path.insert(0, "src")
 import easyocr
 
 from speech.tts import Speaker
+from language.phrases import phrase
 
 # Voice commands need Whisper, which needs numba and llvmlite. Imported
 # optionally so that a failure in an optional feature cannot stop the
@@ -68,6 +72,15 @@ try:
 except Exception as error:
     print(f"Visual questions unavailable: {error}")
     VISION_AVAILABLE = False
+
+# Hindi translation of vision answers. The module itself is light; the
+# translation model is loaded only when Hindi mode is first used.
+try:
+    from language.translator import HindiTranslator
+    TRANSLATION_AVAILABLE = True
+except Exception as error:
+    print(f"Hindi translation unavailable: {error}")
+    TRANSLATION_AVAILABLE = False
 
 # Spelling correction for OCR readings. Optional: without it, text is
 # spoken exactly as read.
@@ -88,9 +101,24 @@ except Exception as error:
 # Object detection: YOLO26 pretrained on Objects365 (365 classes)
 DETECTION_MODEL = "models/yolo26m-objv1-150.pt"
 
-# Speech recognition: Whisper, running locally on the GPU. "base" was
-# accurate on all five test commands; move to "small" if that changes.
-VOICE_MODEL = "base"
+# Speech recognition: Whisper, running locally on the GPU. "small"
+# rather than "base", because base struggled with an Indian English
+# accent unless the speaker talked loudly and slowly.
+VOICE_MODEL = "small"
+
+# --- Language --------------------------------------------------------
+
+# Language at startup: "en" or "hi". Switched at any time with L, or by
+# saying "Hindi" / "इंग्लिश".
+STARTUP_LANGUAGE = "en"
+
+# Speech output voice for each language, chosen after listening to every
+# Indian voice edge-tts offers. Both are female, which the Hindi phrases
+# in src/language/phrases.py depend on ("पढ़ रही हूँ").
+VOICES = {
+    "en": "en-IN-NeerjaExpressiveNeural",
+    "hi": "hi-IN-SwaraNeural",
+}
 
 # --- Diagnostics -----------------------------------------------------
 
@@ -181,6 +209,10 @@ RECENT_SECONDS = 20.0
 # How long the chosen object stays highlighted on screen
 HIGHLIGHT_SECONDS = 3.0
 
+# A spoken question shorter than this is treated as a cut-off recording
+# rather than sent to the vision model
+MIN_QUESTION_WORDS = 2
+
 # --- Failure handling ------------------------------------------------
 
 # If the camera stops returning frames, keep retrying for this long
@@ -237,7 +269,7 @@ except Exception as error:
          f"network problem. [{error}]")
 
 try:
-    speaker = Speaker()
+    speaker = Speaker(voice=VOICES[STARTUP_LANGUAGE])
 except Exception as error:
     fail("the speech system could not start.",
          f"Check that audio output is available. [{error}]")
@@ -253,11 +285,13 @@ if VOICE_AVAILABLE:
 else:
     voice = None
 
+translator = HindiTranslator() if TRANSLATION_AVAILABLE else None
+
 # Visual questions are optional: without Ollama running, every other
 # feature still works.
 if VISION_AVAILABLE:
     try:
-        asker = VisionAsker()
+        asker = VisionAsker(translator=translator)
     except Exception as error:
         print(f"Visual questions unavailable: {error}")
         asker = None
@@ -275,6 +309,7 @@ if not camera.isOpened():
          "(video call, camera app).")
 
 mode = MODE_AMBIENT
+language = STARTUP_LANGUAGE
 
 # Remembers the last thing spoken, so the user can ask to hear it again
 last_announcement = ""
@@ -305,6 +340,7 @@ if voice is not None:
     print("  V     - speak (press to start, press again to stop)")
     if asker is not None:
         print("            a command, or any question: \"what am I wearing?\"")
+print("  L     - switch language: English / Hindi")
 print("  Q     - quit")
 
 
@@ -340,6 +376,11 @@ def say(text, priority=False, expires_in=None):
         return
     last_announcement = text
     speaker.speak(text, priority=priority, expires_in=expires_in)
+
+
+def t(key, **values):
+    """A phrase in the current language - see src/language/phrases.py."""
+    return phrase(key, language, **values)
 
 
 def beep():
@@ -462,7 +503,7 @@ def start_reading(frame, start_message, on_done, max_words=MAX_SPOKEN_WORDS):
         return
 
     if ocr_busy.is_set():
-        say("Still reading, please wait", priority=True)
+        say(t("still_reading"), priority=True)
         return
 
     ocr_busy.set()
@@ -478,7 +519,7 @@ def start_reading(frame, start_message, on_done, max_words=MAX_SPOKEN_WORDS):
             on_done(words)
         except Exception as error:
             print(f"OCR error: {error}")
-            say("Sorry, reading failed", priority=True)
+            say(t("reading_failed"), priority=True)
         finally:
             # Always clear the flag - otherwise one error would block
             # every future reading
@@ -497,20 +538,23 @@ def speak_identity(words, label, confidence):
     phrased as uncertain rather than stated as fact.
     """
     if label and confidence < CONFIDENT_LABEL:
-        object_part = f"This might be {label}."
+        object_part = t("might_be_object", label=label)
     elif label:
-        object_part = f"I see {label}."
+        object_part = t("i_see_object", label=label)
     else:
         object_part = None
 
+    if words:
+        text_part = t("it_says", text=", ".join(words))
+
     if words and object_part:
-        say(f"{object_part} It says: " + ", ".join(words), priority=True)
+        say(f"{object_part} {text_part}", priority=True)
     elif words:
-        say("It says: " + ", ".join(words), priority=True)
+        say(text_part, priority=True)
     elif object_part:
-        say(f"{object_part} No readable text.", priority=True)
+        say(f"{object_part} {t('no_text_on_object')}", priority=True)
     else:
-        say("I cannot identify anything", priority=True)
+        say(t("cannot_identify"), priority=True)
 
 
 # ---------------------------------------------------------------------
@@ -641,7 +685,7 @@ def identify_and_read(frame):
 
     prominent_until = time.time() + HIGHLIGHT_SECONDS
 
-    start_reading(frame, "Identifying",
+    start_reading(frame, t("identifying"),
                   lambda words: speak_identity(words, label, confidence))
 
 
@@ -654,24 +698,38 @@ def ask_vision(question):
     it is only ever used for a deliberate question.
     """
     if asker is None:
-        say("Visual questions are not available", priority=True)
+        say(t("vision_unavailable"), priority=True)
         return
 
     if current_frame is None:
         return
 
-    say("Let me look", priority=True)
+    # A single word - "और...", "um" - is almost always a recording cut
+    # short, not a question. Sent to the model, a fragment like that
+    # produced a long rambling answer that kept the model busy, and every
+    # real question after it was refused.
+    if len(question.split()) < MIN_QUESTION_WORDS:
+        print(f"  [vision] too short to be a question: {question!r}")
+        say(t("ask_full_question"), priority=True)
+        return
+
+    say(t("let_me_look"), priority=True)
 
     def on_answer(answer, problem):
         if problem:
-            say(f"Sorry, {problem}", priority=True)
+            # Printed as well as spoken: in one test five questions in a
+            # row were refused as "busy", and nothing in the terminal
+            # showed why
+            print(f"VISION PROBLEM: {problem}")
+            say(t("vision_" + problem), priority=True)
             return
         print(f"VISION: {answer}")
         # "It looks like" signals the model's impression rather than
         # certainty - it sometimes states details it is unsure of
-        say("It looks like " + answer, priority=True)
+        say(t("it_looks_like", answer=answer), priority=True)
 
-    asker.ask_in_background(current_frame, question, on_answer)
+    # The answer comes back in the current language
+    asker.ask_in_background(current_frame, question, on_answer, language)
 
 
 def read_document(frame):
@@ -685,9 +743,9 @@ def read_document(frame):
         if words:
             say(", ".join(words), priority=True)
         else:
-            say("No readable text found", priority=True)
+            say(t("no_text"), priority=True)
 
-    start_reading(frame, "Reading", speak_text,
+    start_reading(frame, t("reading"), speak_text,
                   max_words=MAX_WORDS_READING)
 
 
@@ -698,10 +756,11 @@ def read_document(frame):
 def describe_scene():
     """Speak a summary of everything currently believed to be visible."""
     if not currently_present:
-        say("I do not see anything I recognise", priority=True)
+        say(t("nothing_recognised"), priority=True)
         return
 
-    say("I see: " + ", ".join(sorted(currently_present)), priority=True)
+    say(t("i_see_list", objects=", ".join(sorted(currently_present))),
+        priority=True)
 
 
 def track_objects(detected_now, announce):
@@ -776,24 +835,45 @@ def run_command(name):
             print(f"REPEATING: {last_announcement}")
             speaker.speak(last_announcement, priority=True)
         else:
-            speaker.speak("Nothing to repeat", priority=True)
+            speaker.speak(t("nothing_to_repeat"), priority=True)
 
     elif name == "reading_mode":
         mode = MODE_READING
         print("Switched to READING mode")
-        say("Reading mode", priority=True)
+        say(t("reading_mode"), priority=True)
 
     elif name == "ambient_mode":
         mode = MODE_AMBIENT
         print("Switched to AMBIENT mode")
-        say("Ambient mode", priority=True)
+        say(t("ambient_mode"), priority=True)
+
+    elif name == "language_hindi":
+        set_language("hi")
+
+    elif name == "language_english":
+        set_language("en")
 
     elif name == "quit":
-        say("Stopping", priority=True)
+        say(t("stopping"), priority=True)
         time.sleep(1.5)           # let the announcement finish
         return False
 
     return True
+
+
+def set_language(new_language):
+    """Switch everything spoken, and voice recognition, to a language."""
+    global language
+
+    language = new_language
+    speaker.voice = VOICES[language]
+    print(f"LANGUAGE: {language}")
+    say(t("language_set"), priority=True)
+
+    # Start loading the translation model now, in the background, so the
+    # first Hindi answer is not delayed by it
+    if language == "hi" and translator is not None:
+        translator.preload()
 
 
 def handle_voice_key():
@@ -805,7 +885,7 @@ def handle_voice_key():
     global voice_active
 
     if voice is None:
-        say("Voice commands are not available", priority=True)
+        say(t("voice_unavailable"), priority=True)
         return
 
     if not voice.recording:
@@ -827,11 +907,11 @@ def handle_voice_key():
     def on_transcribed(text):
         global pending_command
         if not text:
-            say("I did not hear anything", priority=True)
+            say(t("did_not_hear"), priority=True)
             return
 
         print(f"  heard: {text!r}")
-        command = match_command(text)
+        command = match_command(text, language)
 
         if command:
             # The command is run by the main loop, not here: this runs on
@@ -843,16 +923,20 @@ def handle_voice_key():
             # scene - this is what makes "what am I wearing?" work
             ask_vision(text)
         else:
-            say(f"I heard {text}. I do not know that command.", priority=True)
+            say(t("unknown_command", text=text), priority=True)
 
-    voice.transcribe_in_background(audio, on_transcribed)
+    # Whisper is told which language to expect - see voice/listener.py
+    voice.transcribe_in_background(audio, on_transcribed, language)
 
 
 # ---------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------
 
-say("Ambient mode", priority=True)
+if language == "hi" and translator is not None:
+    translator.preload()
+
+say(t("ambient_mode"), priority=True)
 
 try:
     # Set to the time the camera first stopped responding, so a brief
@@ -866,11 +950,11 @@ try:
             if lost_camera_since is None:
                 lost_camera_since = time.time()
                 print("Camera stopped responding - retrying...")
-                say("Camera problem", priority=True)
+                say(t("camera_problem"), priority=True)
 
             if time.time() - lost_camera_since > CAMERA_RETRY_SECONDS:
                 print("Camera did not recover.")
-                say("Camera disconnected. Stopping.", priority=True)
+                say(t("camera_disconnected"), priority=True)
                 time.sleep(2)          # let the announcement finish playing
                 break
 
@@ -880,7 +964,7 @@ try:
         if lost_camera_since is not None:
             lost_camera_since = None
             print("Camera recovered.")
-            say("Camera working again", priority=True)
+            say(t("camera_back"), priority=True)
 
         # One bad frame should not end the session
         try:
@@ -917,7 +1001,9 @@ try:
         )
 
         cv2.putText(
-            annotated_frame, f"MODE: {mode.upper()}", (10, 70),
+            annotated_frame,
+            f"MODE: {mode.upper()}   LANG: {'HINDI' if language == 'hi' else 'ENGLISH'}",
+            (10, 70),
             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2
         )
 
@@ -969,7 +1055,7 @@ try:
         elif was_offline:
             was_offline = False
             print("Back to the online voice.")
-            say("Back online", priority=True)
+            say(t("back_online"), priority=True)
 
         if not speaker.is_working():
             if not speech_broken:
@@ -1007,6 +1093,7 @@ try:
         ]
         if voice is not None:
             controls.append("V - speak: command or question")
+        controls.append("L - English / Hindi")
         controls.append("Q - quit")
 
         for index, line in enumerate(controls):
@@ -1031,18 +1118,18 @@ try:
             if mode == MODE_AMBIENT:
                 mode = MODE_READING
                 print("Switched to READING mode")
-                say("Reading mode. Press space to read text.", priority=True)
+                say(t("reading_mode_hint"), priority=True)
             else:
                 mode = MODE_AMBIENT
                 print("Switched to AMBIENT mode")
-                say("Ambient mode", priority=True)
+                say(t("ambient_mode"), priority=True)
 
         # --- SPACE = read all text (Reading mode only) ---
         elif key == ord(' '):
             if mode == MODE_READING:
                 read_document(frame)
             else:
-                say("Switch to reading mode first", priority=True)
+                say(t("switch_to_reading"), priority=True)
 
         # --- D = describe what is visible ---
         elif key == ord('d'):
@@ -1058,11 +1145,15 @@ try:
                 print(f"REPEATING: {last_announcement}")
                 speaker.speak(last_announcement, priority=True)
             else:
-                speaker.speak("Nothing to repeat", priority=True)
+                speaker.speak(t("nothing_to_repeat"), priority=True)
 
         # --- V = speak a command or a question ---
         elif key == ord('v'):
             handle_voice_key()
+
+        # --- L = switch language ---
+        elif key == ord('l'):
+            set_language("hi" if language == "en" else "en")
 
         elif key == ord('q'):
             break

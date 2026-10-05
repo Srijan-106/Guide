@@ -1,22 +1,25 @@
 """
 Voice commands for VisionAssist, using OpenAI Whisper locally.
 
-Whisper runs on the GPU, offline and free. It is markedly more accurate
-than the small offline recognisers, especially with accents and
-background noise, which matters when a wrong command does the wrong
-thing.
-
-Push-to-talk: V starts recording and V again stops it, so there is no
-need to detect when speech has ended - a source of errors in
-always-listening designs.
+Whisper runs on the GPU, offline and free, and understands both English
+and Hindi. Push-to-talk: V starts recording and V again stops it, so
+there is no need to detect when speech has ended.
 
 Commands are matched by keyword rather than exact phrase, so "can you
 read this please" still matches "read". Anything that matches no command
 is passed on as a question for the vision model.
+
+HINDI: Whisper is told explicitly which language to expect. Spoken Hindi
+and Urdu are nearly identical, and when left to detect the language
+itself Whisper often writes Hindi speech in Urdu script - which no Hindi
+keyword would ever match.
 """
 
 import queue
+import re
 import threading
+import time
+import unicodedata
 
 import numpy as np
 import sounddevice as sd
@@ -25,12 +28,35 @@ import whisper
 # Whisper expects audio at 16 kHz
 SAMPLE_RATE = 16000
 
-# Model sizes: tiny, base, small, medium, large. "base" was accurate on
-# all five test commands; move up if commands are misheard.
-MODEL_SIZE = "base"
+# Model sizes: tiny, base, small, medium, large. "base" struggled with an
+# Indian English accent unless the speaker talked loudly and slowly;
+# "small" is roughly three times larger, much better with accents, and
+# transcribed commands in 0.4-0.6 seconds.
+MODEL_SIZE = "small"
 
 # Recordings shorter than this are treated as an accidental key press
 MIN_SECONDS = 0.4
+
+# Told to Whisper before it listens, so that when a word is unclear it
+# leans towards the words this application actually uses. This matters
+# most for accents the model saw less of in training.
+VOCABULARY_PROMPTS = {
+    "en": (
+        "Commands: read this, what is this, identify, describe, repeat, "
+        "reading mode, ambient mode, Hindi, stop. Questions such as: what "
+        "am I wearing, what colour is my bracelet, what does the label say."
+    ),
+    "hi": (
+        "कमांड: पढ़ो, यह क्या है, पहचानो, क्या दिख रहा है, दोबारा, "
+        "पढ़ने का मोड, इंग्लिश, बंद करो। सवाल जैसे: मैंने क्या पहना है, "
+        "मेरा ब्रेसलेट किस रंग का है।"
+    ),
+}
+
+# Whisper normally takes its first guess at each word. Beam search keeps
+# several candidate transcriptions and picks the most likely overall -
+# slower, but more accurate on unclear speech.
+BEAM_SIZE = 5
 
 # Phrases Whisper produces from near-silence or a cut-off clip. It was
 # trained partly on video subtitles, where these are common closing
@@ -39,7 +65,36 @@ MIN_SECONDS = 0.4
 HALLUCINATIONS = {
     "subscribe", "please subscribe", "thank you", "thanks",
     "thank you for watching", "thanks for watching", "you", "bye",
+    "धन्यवाद", "शुक्रिया", "सब्सक्राइब करें", "सब्सक्राइब",
 }
+
+
+def collapse_repeats(text):
+    """Reduce a phrase Whisper has repeated to a single copy.
+
+    With beam search, Whisper sometimes loops on a phrase - "What am I
+    wearing" was transcribed five times over from one question. If every
+    part of the text is the same phrase, keep just one.
+    """
+    parts = [part.strip() for part in re.split(r"[,.!?।]+", text)
+             if part.strip()]
+    if len(parts) > 1 and len({part.lower() for part in parts}) == 1:
+        return parts[0]
+    return text
+
+
+def normalise(text):
+    """Make spoken text comparable, whatever the spelling variant.
+
+    Lower-cases English, removes punctuation (including the Devanagari
+    full stop "।"), and removes the nukta dot - Whisper may write पढ़ो or
+    पढो, ज़रा or जरा, and both should match the same keyword.
+    """
+    text = unicodedata.normalize("NFD", text.lower())
+    text = text.replace("\u093c", "")          # the nukta dot
+    for mark in ".,!?।":
+        text = text.replace(mark, " ")
+    return " ".join(text.split())
 
 
 class VoiceListener:
@@ -110,8 +165,8 @@ class VoiceListener:
     # Transcription
     # -----------------------------------------------------------------
 
-    def transcribe(self, audio):
-        """Turn recorded audio into text. Runs on the GPU when available.
+    def transcribe(self, audio, language="en"):
+        """Turn recorded audio into text, in the given language.
 
         The audio is normalised first: a clipping microphone flattens the
         waveform and destroys the detail Whisper needs, which makes it
@@ -128,27 +183,34 @@ class VoiceListener:
 
         result = self.model.transcribe(
             audio,
-            language="en",
+            language=language,
             fp16=True,
             temperature=0,
+            beam_size=BEAM_SIZE,
+            initial_prompt=VOCABULARY_PROMPTS.get(language),
             # Return nothing, rather than an invented phrase, when the
             # clip does not contain speech
             no_speech_threshold=0.6,
             condition_on_previous_text=False,
         )
-        text = result["text"].strip()
+        text = collapse_repeats(result["text"].strip())
 
-        if text.lower().strip(" .,!?") in HALLUCINATIONS:
+        if normalise(text) in {normalise(h) for h in HALLUCINATIONS}:
             print(f"  [voice] ignored a likely hallucination: {text!r}")
             return ""
 
         return text
 
-    def transcribe_in_background(self, audio, on_done):
+    def transcribe_in_background(self, audio, on_done, language="en"):
         """Transcribe without blocking the video loop."""
         def work():
             try:
-                on_done(self.transcribe(audio))
+                started = time.time()
+                text = self.transcribe(audio, language)
+                # Timed, so the cost of a larger model is measured
+                # rather than guessed
+                print(f"  [voice] transcribed in {time.time() - started:.1f} s")
+                on_done(text)
             except Exception as error:
                 print(f"Transcription error: {error}")
                 on_done(None)
@@ -161,32 +223,51 @@ class VoiceListener:
 # ---------------------------------------------------------------------
 
 # Each command lists the words that trigger it. Order matters: the first
-# match wins, so more specific phrases are listed before general ones.
-COMMANDS = [
-    ("reading_mode",  ["reading mode", "read mode"]),
-    ("ambient_mode",  ["ambient mode", "ambient"]),
-    ("identify",      ["what is this", "what's this", "identify", "what am i holding"]),
-    ("describe",      ["describe", "what do you see", "what is around", "what's around"]),
-    ("read",          ["read"]),
-    ("repeat",        ["repeat", "again", "say that"]),
-    ("quit",          ["stop", "quit", "exit", "close"]),
-]
+# match wins, so more specific phrases come before general ones -
+# "reading mode" must be checked before "read".
+#
+# Language switching is listed in both, so either language can be
+# reached from the other by voice.
+
+COMMANDS = {
+    "en": [
+        ("language_hindi", ["hindi"]),
+        ("reading_mode",   ["reading mode", "read mode"]),
+        ("ambient_mode",   ["ambient mode", "ambient"]),
+        ("identify",       ["what is this", "what's this", "identify", "what am i holding"]),
+        ("describe",       ["describe", "what do you see", "what is around", "what's around"]),
+        ("read",           ["read"]),
+        ("repeat",         ["repeat", "again", "say that"]),
+        ("quit",           ["stop", "quit", "exit", "close"]),
+    ],
+    "hi": [
+        ("language_english", ["इंग्लिश", "अंग्रेजी", "अंग्रेज़ी", "english"]),
+        ("reading_mode",     ["पढ़ने का मोड", "पढ़ने वाला मोड", "रीडिंग मोड"]),
+        ("ambient_mode",     ["देखने का मोड", "देखने वाला मोड", "एम्बिएंट"]),
+        ("identify",         ["यह क्या है", "ये क्या है", "क्या है यह", "क्या है ये",
+                              "पहचानो", "पहचान"]),
+        ("describe",         ["क्या दिख रहा", "आसपास क्या", "डिस्क्राइब"]),
+        ("read",             ["पढ़ो", "पढ़िए", "पढ़ के", "पढ़कर", "रीड"]),
+        ("repeat",           ["दोबारा", "फिर से", "दोहराओ", "रिपीट"]),
+        ("quit",             ["बंद करो", "बंद कर दो", "रुको", "स्टॉप"]),
+    ],
+}
 
 
-def match_command(text):
+def match_command(text, language="en"):
     """Return the command name for spoken text, or None.
 
     Matching is by keyword rather than exact phrase: "can you read this
-    please" contains "read" and so matches. Exact matching would fail on
-    almost everything a person actually says.
+    please" contains "read" and so matches. Both the spoken text and the
+    keywords are normalised, so spelling variants still match.
     """
     if not text:
         return None
 
-    spoken = text.lower().strip(" .,!?")
+    spoken = normalise(text)
 
-    for name, phrases in COMMANDS:
-        if any(phrase in spoken for phrase in phrases):
+    for name, phrases in COMMANDS.get(language, COMMANDS["en"]):
+        if any(normalise(phrase) in spoken for phrase in phrases):
             return name
 
     return None
