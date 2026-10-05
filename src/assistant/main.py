@@ -54,6 +54,7 @@ import easyocr
 
 from speech.tts import Speaker
 from language.phrases import phrase
+from display.hud import Hud
 
 # Voice commands need Whisper, which needs numba and llvmlite. Imported
 # optionally so that a failure in an optional feature cannot stop the
@@ -308,11 +309,15 @@ if not camera.isOpened():
          "It may be unplugged, or in use by another program "
          "(video call, camera app).")
 
+hud = Hud()
+
 mode = MODE_AMBIENT
 language = STARTUP_LANGUAGE
 
-# Remembers the last thing spoken, so the user can ask to hear it again
+# Remembers the last thing spoken, so the user can ask to hear it again,
+# and when - so the on-screen caption can fade out afterwards
 last_announcement = ""
+last_spoken_at = 0.0
 
 # Set while a text reading is running on the background thread, so a
 # second reading cannot start on top of it
@@ -371,10 +376,11 @@ def say(text, priority=False, expires_in=None):
     expires_in - drop the announcement if it has not been spoken within
                  this many seconds.
     """
-    global last_announcement
+    global last_announcement, last_spoken_at
     if not text or not text.strip():
         return
     last_announcement = text
+    last_spoken_at = time.time()
     speaker.speak(text, priority=priority, expires_in=expires_in)
 
 
@@ -816,7 +822,7 @@ def track_objects(detected_now, announce):
 
 def run_command(name):
     """Run a command. Returns False if the application should stop."""
-    global mode
+    global mode, last_spoken_at
 
     if name == "read":
         if mode != MODE_READING:
@@ -833,6 +839,7 @@ def run_command(name):
     elif name == "repeat":
         if last_announcement:
             print(f"REPEATING: {last_announcement}")
+            last_spoken_at = time.time()          # show the caption again
             speaker.speak(last_announcement, priority=True)
         else:
             speaker.speak(t("nothing_to_repeat"), priority=True)
@@ -977,8 +984,6 @@ try:
             print(f"Detection error: {error}")
             continue
 
-        annotated_frame = results[0].plot()
-
         # Keep the newest frame available to voice commands and visual
         # questions, which arrive from a background thread rather than
         # from a keypress
@@ -995,39 +1000,6 @@ try:
         fps = 1 / (current_time - previous_time) if previous_time else 0
         previous_time = current_time
 
-        cv2.putText(
-            annotated_frame, f"FPS: {int(fps)}", (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2
-        )
-
-        cv2.putText(
-            annotated_frame,
-            f"MODE: {mode.upper()}   LANG: {'HINDI' if language == 'hi' else 'ENGLISH'}",
-            (10, 70),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2
-        )
-
-        # Highlight the object chosen by the last identification
-        if prominent_box and time.time() < prominent_until:
-            x1, y1, x2, y2 = prominent_box
-            cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 140, 255), 4)
-            cv2.putText(annotated_frame, "CHOSEN", (x1, max(30, y1 - 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 140, 255), 2)
-
-        # Visible sign that a reading is in progress
-        if ocr_busy.is_set():
-            cv2.putText(
-                annotated_frame, "READING TEXT...", (10, 310),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2
-            )
-
-        # Visible sign that the vision model is working on a question
-        if asker is not None and asker.busy.is_set():
-            cv2.putText(
-                annotated_frame, "THINKING...", (10, 415),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 160, 60), 2
-            )
-
         # --- Speech health ---------------------------------------------
         # Three states: working online, working offline with the Windows
         # voice, or not working at all - which cannot be announced by
@@ -1042,11 +1014,6 @@ try:
                 # instantly.
                 last_online_retry = time.time()
                 print("Using the offline voice (no internet).")
-
-            cv2.putText(
-                annotated_frame, "OFFLINE VOICE", (10, 345),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2
-            )
 
             if time.time() - last_online_retry > ONLINE_RETRY_INTERVAL:
                 last_online_retry = time.time()
@@ -1066,41 +1033,47 @@ try:
                 last_beep = time.time()
                 beep()
 
-            cv2.putText(
-                annotated_frame, "SPEECH NOT WORKING", (10, 345),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2
-            )
         elif speech_broken:
             speech_broken = False
             print("Speech working again.")
 
-        # Visible sign that voice recording is in progress
+        # --- Display ----------------------------------------------------
+        # Drawn by src/display/hud.py: captions of everything spoken,
+        # status pills, a key strip and calm detection boxes. The video
+        # window is for sighted helpers and viewers - the blind user hears
+        # the same information.
+
+        annotated_frame = frame.copy()
+
+        chosen = prominent_box if (prominent_box and
+                                   time.time() < prominent_until) else None
+        hud.draw_detections(annotated_frame, results[0],
+                            show_confidence=DEBUG, chosen_box=chosen)
+
+        statuses = []
         if voice_active:
-            cv2.putText(
-                annotated_frame, "LISTENING...", (10, 380),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2
-            )
+            statuses.append("listening")
+        if asker is not None and asker.busy.is_set():
+            statuses.append("thinking")
+        if ocr_busy.is_set():
+            statuses.append("reading")
+        if speaker.is_offline():
+            statuses.append("offline")
+        if not speaker.is_working():
+            statuses.append("speech_down")
 
-        # On-screen control reminder. Drawn one line at a time because
-        # OpenCV has no multi-line text support. Only features that are
-        # actually available are listed.
-        controls = [
-            "M - switch mode",
-            "SPACE - read all text",
-            "D - describe scene",
-            "I - what is this?",
-            "R - repeat",
-        ]
+        # Only keys for features that are actually available are shown.
+        # L is labelled with the language it switches TO.
+        keys = [("M", "Mode"), ("Space", "Read"), ("D", "Describe"),
+                ("I", "What is this?"), ("R", "Repeat")]
         if voice is not None:
-            controls.append("V - speak: command or question")
-        controls.append("L - English / Hindi")
-        controls.append("Q - quit")
+            keys.append(("V", "Speak"))
+        keys.append(("L", "हिंदी" if language == "en" else "English"))
+        keys.append(("Q", "Quit"))
 
-        for index, line in enumerate(controls):
-            cv2.putText(
-                annotated_frame, line, (10, 110 + index * 25),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1
-            )
+        hud.draw(annotated_frame, mode=mode, language=language, fps=fps,
+                 statuses=statuses, caption=last_announcement,
+                 caption_age=time.time() - last_spoken_at, keys=keys)
 
         cv2.imshow("VisionAssist", annotated_frame)
 
@@ -1143,6 +1116,7 @@ try:
         elif key == ord('r'):
             if last_announcement:
                 print(f"REPEATING: {last_announcement}")
+                last_spoken_at = time.time()      # show the caption again
                 speaker.speak(last_announcement, priority=True)
             else:
                 speaker.speak(t("nothing_to_repeat"), priority=True)
