@@ -38,3 +38,5 @@ timestamp,kind,item,lighting,distance,verdict,heard,notes
 2026-09-29T00:58:45,detection,bottle,dim,close,correct,,
 2026-09-29T00:59:30,detection,cup,dim,close,correct,,partally
 2026-09-29T01:00:14,identify,cream tube,normal,close,no label,,4
+2026-10-02T14:47:20,reading,Handwritten note - neat,normal,close,partial,,
+2026-10-02T14:47:54,reading,Handwritten note - normal,normal,close,nothing,,

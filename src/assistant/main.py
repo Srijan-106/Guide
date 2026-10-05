@@ -12,8 +12,9 @@ Two modes, switched with the M key or by voice:
     text and presses SPACE to have it read aloud. This is deliberate
     inquiry - "what does this say".
 
-Text reading and speech recognition both run on background threads, so
-the video and object detection keep running while they work.
+Speech recognition, text reading and visual questions all run on
+background threads, so the video and object detection keep running while
+they work.
 
 Speech is prioritised: anything the user asks for jumps ahead of ambient
 announcements, and ambient announcements that cannot be spoken promptly
@@ -28,11 +29,12 @@ Controls:
   D     - describe everything currently visible
   I     - identify the object being held up, and read any text on it
   R     - repeat the last thing said
-  V     - voice command: press to start, speak, press again to stop
+  V     - speak: a command, or any question about what the camera sees
   Q     - quit
 """
 
 import math
+import re
 import sys
 import threading
 import time
@@ -48,7 +50,33 @@ sys.path.insert(0, "src")
 import easyocr
 
 from speech.tts import Speaker
-from voice.listener import VoiceListener, match_command
+
+# Voice commands need Whisper, which needs numba and llvmlite. Imported
+# optionally so that a failure in an optional feature cannot stop the
+# whole application from starting.
+try:
+    from voice.listener import VoiceListener, match_command
+    VOICE_AVAILABLE = True
+except Exception as error:
+    print(f"Voice commands unavailable: {error}")
+    VOICE_AVAILABLE = False
+
+# Visual questions need Ollama running with a vision model. Also optional.
+try:
+    from vision.asker import VisionAsker
+    VISION_AVAILABLE = True
+except Exception as error:
+    print(f"Visual questions unavailable: {error}")
+    VISION_AVAILABLE = False
+
+# Spelling correction for OCR readings. Optional: without it, text is
+# spoken exactly as read.
+try:
+    from spellchecker import SpellChecker
+    spell = SpellChecker()
+except Exception as error:
+    print(f"Spelling correction unavailable: {error}")
+    spell = None
 
 
 # ---------------------------------------------------------------------
@@ -101,6 +129,15 @@ FRAMES_BEFORE_GONE = 150
 # matters and an object name adds nothing.
 MAX_SPOKEN_WORDS = 6
 MAX_WORDS_READING = 20
+
+# Below this OCR confidence, a word that is not in the dictionary is
+# corrected to the nearest real word ("PERFORMANGE" -> "performance").
+# Confident readings are left alone, so brand names read correctly -
+# BOLDFIT at 0.92 - are not "corrected" into ordinary words.
+SPELLCHECK_BELOW = 0.90
+
+# OCR reads "1" as "I" or "l" before a unit: "Ikg" for "1kg"
+UNIT_MISREAD = re.compile(r"^[Il|](kg|g|mg|ml|l|L)$")
 
 # Ambient announcements are dropped if they cannot be spoken within this
 # many seconds - a late announcement describes a scene that has changed.
@@ -207,11 +244,25 @@ except Exception as error:
 
 # Voice commands are optional: if the microphone or the model is
 # unavailable, the application still works with the keyboard.
-try:
-    voice = VoiceListener(VOICE_MODEL)
-except Exception as error:
-    print(f"Voice commands unavailable: {error}")
+if VOICE_AVAILABLE:
+    try:
+        voice = VoiceListener(VOICE_MODEL)
+    except Exception as error:
+        print(f"Voice commands unavailable: {error}")
+        voice = None
+else:
     voice = None
+
+# Visual questions are optional: without Ollama running, every other
+# feature still works.
+if VISION_AVAILABLE:
+    try:
+        asker = VisionAsker()
+    except Exception as error:
+        print(f"Visual questions unavailable: {error}")
+        asker = None
+else:
+    asker = None
 
 camera = cv2.VideoCapture(0)
 camera.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
@@ -250,7 +301,10 @@ print("  SPACE - read all text (Reading mode only)")
 print("  D     - describe what is currently visible")
 print("  I     - identify the held-up object and read its text")
 print("  R     - repeat last announcement")
-print("  V     - voice command (press to start, press again to stop)")
+if voice is not None:
+    print("  V     - speak (press to start, press again to stop)")
+    if asker is not None:
+        print("            a command, or any question: \"what am I wearing?\"")
 print("  Q     - quit")
 
 
@@ -308,6 +362,41 @@ def beep():
 # Text reading
 # ---------------------------------------------------------------------
 
+def clean_word(text, confidence):
+    """Make an OCR reading easier to understand when spoken.
+
+    Three fixes, all found testing a protein box labelled "Beast Life
+    Performance Protein 1kg", which was read as "BEAST, PERFORMANGE,
+    PROTEINa, Ikg":
+      - "Ikg" -> "1 kg": OCR confuses 1 with I or l before a unit
+      - "PERFORMANGE" -> "performance": a low-confidence word that is
+        not in the dictionary is corrected to the nearest real word
+      - "BEAST" -> "Beast": all capitals can make the voice spell a
+        word out letter by letter
+    """
+    match = UNIT_MISREAD.match(text)
+    if match:
+        return "1 " + match.group(1)
+
+    words = []
+    for word in text.split():
+        if (spell is not None and confidence < SPELLCHECK_BELOW
+                and word.isalpha() and len(word) >= 5
+                and not spell.known([word.lower()])):
+            fixed = spell.correction(word.lower())
+            if fixed and fixed != word.lower():
+                if DEBUG:
+                    print(f"  [spelling] {word} -> {fixed}")
+                word = fixed
+
+        if word.isupper() and len(word) > 3:
+            word = word.capitalize()
+
+        words.append(word)
+
+    return " ".join(words)
+
+
 def read_text_from_frame(frame, max_words=MAX_SPOKEN_WORDS):
     """Run OCR on a frame and return the text worth speaking,
     in approximate reading order."""
@@ -332,6 +421,12 @@ def read_text_from_frame(frame, max_words=MAX_SPOKEN_WORDS):
             threshold = 0.25
         elif len(cleaned) >= 5:
             threshold = 0.40
+        elif len(cleaned) == 4:
+            # Four-letter words like "LIFE" read at 0.58-0.64 were being
+            # dropped by the 0.75 bar meant for three-letter fragments,
+            # while four-letter junk ("Hikg", "CRuY", "Fepe") scored
+            # below 0.20 - so 0.50 keeps the words and still rejects junk
+            threshold = 0.50
         else:
             threshold = 0.75
 
@@ -349,7 +444,8 @@ def read_text_from_frame(frame, max_words=MAX_SPOKEN_WORDS):
 
     kept.sort(key=reading_order)
 
-    final_words = [result[1].strip() for result in kept[:max_words]]
+    final_words = [clean_word(result[1].strip(), result[2])
+                   for result in kept[:max_words]]
     print(f"SPEAKING IN ORDER: {final_words}")
 
     return final_words
@@ -549,6 +645,35 @@ def identify_and_read(frame):
                   lambda words: speak_identity(words, label, confidence))
 
 
+def ask_vision(question):
+    """Answer an open-ended question about what the camera sees.
+
+    Keyword commands answer fixed questions instantly. This handles
+    everything else - "what am I wearing?", "what is on the bed?" - using
+    a vision-language model running locally. It takes a few seconds, so
+    it is only ever used for a deliberate question.
+    """
+    if asker is None:
+        say("Visual questions are not available", priority=True)
+        return
+
+    if current_frame is None:
+        return
+
+    say("Let me look", priority=True)
+
+    def on_answer(answer, problem):
+        if problem:
+            say(f"Sorry, {problem}", priority=True)
+            return
+        print(f"VISION: {answer}")
+        # "It looks like" signals the model's impression rather than
+        # certainty - it sometimes states details it is unsure of
+        say("It looks like " + answer, priority=True)
+
+    asker.ask_in_background(current_frame, question, on_answer)
+
+
 def read_document(frame):
     """Read the text only, with no object name.
 
@@ -713,6 +838,10 @@ def handle_voice_key():
             # a background thread, and the commands use camera frames and
             # change mode state that belong to the loop.
             pending_command = command
+        elif asker is not None:
+            # Not a known command, so treat it as a question about the
+            # scene - this is what makes "what am I wearing?" work
+            ask_vision(text)
         else:
             say(f"I heard {text}. I do not know that command.", priority=True)
 
@@ -766,8 +895,9 @@ try:
 
         annotated_frame = results[0].plot()
 
-        # Keep the newest frame available to voice commands, which arrive
-        # from a background thread rather than from a keypress
+        # Keep the newest frame available to voice commands and visual
+        # questions, which arrive from a background thread rather than
+        # from a keypress
         current_frame = frame
 
         detected_now = set()
@@ -803,6 +933,13 @@ try:
             cv2.putText(
                 annotated_frame, "READING TEXT...", (10, 310),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 165, 255), 2
+            )
+
+        # Visible sign that the vision model is working on a question
+        if asker is not None and asker.busy.is_set():
+            cv2.putText(
+                annotated_frame, "THINKING...", (10, 415),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 160, 60), 2
             )
 
         # --- Speech health ---------------------------------------------
@@ -859,16 +996,18 @@ try:
             )
 
         # On-screen control reminder. Drawn one line at a time because
-        # OpenCV has no multi-line text support.
+        # OpenCV has no multi-line text support. Only features that are
+        # actually available are listed.
         controls = [
             "M - switch mode",
             "SPACE - read all text",
             "D - describe scene",
             "I - what is this?",
             "R - repeat",
-            "V - voice command",
-            "Q - quit",
         ]
+        if voice is not None:
+            controls.append("V - speak: command or question")
+        controls.append("Q - quit")
 
         for index, line in enumerate(controls):
             cv2.putText(
@@ -921,7 +1060,7 @@ try:
             else:
                 speaker.speak("Nothing to repeat", priority=True)
 
-        # --- V = voice command ---
+        # --- V = speak a command or a question ---
         elif key == ord('v'):
             handle_voice_key()
 
@@ -933,8 +1072,9 @@ except KeyboardInterrupt:
 
 finally:
     print("Shutting down...")
-    if voice is not None and voice.recording:
+    if voice is not None:
         voice.stop_recording()
+        voice.close()
     camera.release()
     cv2.destroyAllWindows()
     speaker.shutdown()

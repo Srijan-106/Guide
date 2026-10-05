@@ -6,12 +6,13 @@ than the small offline recognisers, especially with accents and
 background noise, which matters when a wrong command does the wrong
 thing.
 
-Push-to-talk: the key is held while speaking, so there is no need to
-detect when speech has ended - a source of errors in always-listening
-designs. A wake word can trigger the same code later.
+Push-to-talk: V starts recording and V again stops it, so there is no
+need to detect when speech has ended - a source of errors in
+always-listening designs.
 
 Commands are matched by keyword rather than exact phrase, so "can you
-read this please" still matches "read".
+read this please" still matches "read". Anything that matches no command
+is passed on as a question for the vision model.
 """
 
 import queue
@@ -24,12 +25,21 @@ import whisper
 # Whisper expects audio at 16 kHz
 SAMPLE_RATE = 16000
 
-# Model sizes: tiny, base, small, medium, large. "base" is accurate for
-# short commands and fast on a GPU; move up if commands are misheard.
+# Model sizes: tiny, base, small, medium, large. "base" was accurate on
+# all five test commands; move up if commands are misheard.
 MODEL_SIZE = "base"
 
 # Recordings shorter than this are treated as an accidental key press
 MIN_SECONDS = 0.4
+
+# Phrases Whisper produces from near-silence or a cut-off clip. It was
+# trained partly on video subtitles, where these are common closing
+# lines - "subscribe" was transcribed twice in one test session when
+# nothing of the sort was said. None is a plausible request here.
+HALLUCINATIONS = {
+    "subscribe", "please subscribe", "thank you", "thanks",
+    "thank you for watching", "thanks for watching", "you", "bye",
+}
 
 
 class VoiceListener:
@@ -38,42 +48,42 @@ class VoiceListener:
         self.model = whisper.load_model(model_size)
 
         self._frames = queue.Queue()
-        self._stream = None
         self.recording = False
+
+        # The microphone is opened once and left running; audio is only
+        # kept while recording. Opening a stream takes a noticeable
+        # fraction of a second, and opening it on each key press meant
+        # the first word of a command was often lost - "colour of my
+        # bracelet" arrived as "of my bracelet".
+        self._stream = sd.InputStream(
+            samplerate=SAMPLE_RATE, channels=1, dtype="float32",
+            callback=self._on_audio,
+        )
+        self._stream.start()
 
     # -----------------------------------------------------------------
     # Recording
     # -----------------------------------------------------------------
 
-    def start_recording(self):
-        """Begin capturing audio. Called when the key is pressed."""
+    def _on_audio(self, indata, frames, time_info, status):
+        """Called by the audio driver for every block of samples."""
         if self.recording:
-            return
-
-        self._frames = queue.Queue()
-        self.recording = True
-
-        def on_audio(indata, frames, time_info, status):
-            if status:
-                print(f"  [audio] {status}")
             # copy() because the buffer is reused by the audio driver
             self._frames.put(indata.copy())
 
-        self._stream = sd.InputStream(
-            samplerate=SAMPLE_RATE, channels=1, dtype="float32",
-            callback=on_audio,
-        )
-        self._stream.start()
+    def start_recording(self):
+        """Begin keeping audio. Called when V is pressed."""
+        if self.recording:
+            return
+        self._frames = queue.Queue()
+        self.recording = True
 
     def stop_recording(self):
-        """Stop capturing and return the audio. Called on key release."""
+        """Stop keeping audio and return what was recorded."""
         if not self.recording:
             return None
 
         self.recording = False
-        self._stream.stop()
-        self._stream.close()
-        self._stream = None
 
         chunks = []
         while not self._frames.empty():
@@ -88,6 +98,14 @@ class VoiceListener:
 
         return audio
 
+    def close(self):
+        """Release the microphone. Called when the application exits."""
+        try:
+            self._stream.stop()
+            self._stream.close()
+        except Exception:
+            pass
+
     # -----------------------------------------------------------------
     # Transcription
     # -----------------------------------------------------------------
@@ -97,13 +115,12 @@ class VoiceListener:
 
         The audio is normalised first: a clipping microphone flattens the
         waveform and destroys the detail Whisper needs, which makes it
-        hallucinate plausible-sounding subtitle phrases ("Thank you",
-        "You know what?") rather than admit it heard nothing.
+        hallucinate plausible-sounding subtitle phrases.
         """
         peak = float(np.abs(audio).max())
 
         if peak < 0.01:
-            print("  [audio] almost silent - nothing to transcribe")
+            print("  [voice] almost silent - nothing to transcribe")
             return ""
 
         # Scale to a consistent level, leaving headroom below maximum
@@ -114,12 +131,18 @@ class VoiceListener:
             language="en",
             fp16=True,
             temperature=0,
-            # Whisper invents text when it hears nothing. These thresholds
-            # make it return an empty result instead.
+            # Return nothing, rather than an invented phrase, when the
+            # clip does not contain speech
             no_speech_threshold=0.6,
             condition_on_previous_text=False,
         )
-        return result["text"].strip()
+        text = result["text"].strip()
+
+        if text.lower().strip(" .,!?") in HALLUCINATIONS:
+            print(f"  [voice] ignored a likely hallucination: {text!r}")
+            return ""
+
+        return text
 
     def transcribe_in_background(self, audio, on_done):
         """Transcribe without blocking the video loop."""
