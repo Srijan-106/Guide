@@ -1,7 +1,6 @@
 timestamp,kind,item,lighting,distance,verdict,heard,notes
 2026-09-29T00:34:17,detection,bottle,bright,close,correct,bottle,"ANNOUNCING: cabinet/shelf, glasses, person"
-2026-09-29T00:37:11,detection,bottle,bright,close,correct,bottle,
-2026-09-29T00:38:08,detection,cup,bright,close,missed,cup,detected bu didnt speak
+2026-09-29T00:38:08,detection,cup,bright,close,missed,,detected bu didnt speak | corrected 2026-10-06: heard was 'cup' - 'heard' held the on-screen label; nothing was spoken
 2026-09-29T00:38:49,detection,book,bright,close,missed,,
 2026-09-29T00:39:09,detection,phone,bright,close,correct,cell phone,
 2026-09-29T00:39:57,detection,cream tube,bright,close,missed,nothing,not detected
@@ -40,3 +39,18 @@ timestamp,kind,item,lighting,distance,verdict,heard,notes
 2026-09-29T01:00:14,identify,cream tube,normal,close,no label,,4
 2026-10-02T14:47:20,reading,Handwritten note - neat,normal,close,partial,,
 2026-10-02T14:47:54,reading,Handwritten note - normal,normal,close,nothing,,
+2026-10-06T18:08:34,detection,book,dim,close,missed,,
+2026-10-06T18:09:45,detection,cream tube,dim,close,missed,,it says gluco 6 but didnit told that it a cream tube | corrected 2026-10-06: verdict was 'correct' - the app read the label text but never named the object
+2026-10-06T18:10:08,detection,pen,dim,close,correct,pen,
+2026-10-06T18:10:42,identify,chair,normal,close,no label,,same as above chair | corrected 2026-10-06: verdict was 'correct' - app log shows PROMINENT: none - no object was named
+2026-10-06T18:34:00,detection,spray bottle,dim,close,missed,,
+2026-10-06T18:53:32,detection,chair,bright,close,missed,,corrected 2026-10-06: app announced chair at startup but the speech was dropped as too late (log)
+2026-10-06T18:54:20,reading,"BOLDFIT bottle (large, metallic)",dim,close,partial,boldfit,"corrected 2026-10-06: read on the 4th press; presses 1-3 read only '1', '1', '8'"
+2026-10-06T18:55:33,reading,Cream tube label (small print),dim,close,partial,,corrected 2026-10-06: verdict was 'exact' - app said 'glycol Acid cream 69 w': Glycolic and 6% were wrong
+2026-10-06T18:56:00,reading,"Product back label (small, dense)",dim,close,nothing,,
+2026-10-06T18:56:47,reading,Handwritten note - neat,dim,close,nothing,,corrected 2026-10-06: verdict was 'wrong' - log shows nothing was spoken
+2026-10-06T18:56:50,reading,Handwritten note - normal,dim,close,nothing,,corrected 2026-10-06: verdict was 'wrong' - log shows nothing was spoken
+2026-10-06T18:58:04,reading,"Drink can (curved, shiny)",dim,close,partial,,"corrected 2026-10-06: verdict was 'exact' - app said 'Pepsi' / 'PePSI, Sugar'; 'Zero' was never spoken"
+2026-10-06T19:05:15,reading,Laptop or phone screen (backlit),dim,close,partial,,"corrected 2026-10-06: app said '06.55, Kota Jn, Passenger Information, You can now book' - and the spell checker changed Hazrat to hazard, gmail.com to malcolm"
+2026-10-06T19:11:24,detection,chair,normal,close,correct,,
+2026-10-06T19:12:00,detection,chair,dim,close,missed,,
