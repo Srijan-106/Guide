@@ -52,7 +52,10 @@ GLOSSARY = {
     "slippers": "चप्पल", "slipper": "चप्पल", "cap": "कैप", "hat": "टोपी",
     "watch": "घड़ी", "ring": "अंगूठी", "bottle": "बोतल", "phone": "फ़ोन",
     "cup": "कप", "chair": "कुर्सी", "bed": "बेड", "laptop": "लैपटॉप",
-    "book": "किताब", "pillow": "तकिया", "lamp": "लैंप",
+    "book": "किताब", "pillow": "तकिया", "lamp": "लैंप", 
+    # Describing words NLLB got wrong in testing:
+    # "curly" came out as "गुलदस्ता" (bouquet), so it is fixed here too.
+    "curly": "घुंघराले",
 }
 
 # Longest first, so "t-shirt" is replaced before "shirt" can match inside it
