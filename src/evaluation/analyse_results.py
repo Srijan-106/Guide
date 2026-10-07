@@ -18,7 +18,25 @@ SUCCESS = {
     "detection": {"correct"},
     "identify": {"correct", "hedged right"},
     "reading": {"exact", "partial"},
+
+    # Day 12 tests. A voice command succeeds only if the right action ran.
+    "voice_en": {"correct"},
+    "voice_hi": {"correct"},
+
+    # A visual answer succeeds only if it is fully correct. "partly
+    # correct" is NOT counted: unlike a partial reading, a half-right
+    # answer ("bottle in your left hand" when it is in the right) can
+    # mislead someone who cannot check it. It still shows in the verdicts.
+    "question_en": {"correct"},
+    "question_hi": {"correct"},
+
+    # A small slip that leaves the meaning clear still does the job
+    "translation": {"meaning kept", "small error"},
 }
+
+# The order the features are reported in
+KINDS = ("detection", "identify", "reading",
+         "voice_en", "voice_hi", "question_en", "question_hi", "translation")
 
 
 def percent(part, whole):
@@ -35,7 +53,7 @@ def main():
 
     print(f"{len(rows)} tests recorded\n")
 
-    for kind in ("detection", "identify", "reading"):
+    for kind in KINDS:
         tests = [r for r in rows if r["kind"] == kind]
         if not tests:
             continue
@@ -49,7 +67,7 @@ def main():
         # Every verdict, so failures are visible rather than averaged away
         print("\n  Verdicts:")
         for verdict, count in Counter(r["verdict"] for r in tests).most_common():
-            print(f"    {verdict:<14} {count:>3}   {percent(count, len(tests))}")
+            print(f"    {verdict:<18} {count:>3}   {percent(count, len(tests))}")
 
         # By lighting - does it hold up in dim light?
         by_light = defaultdict(list)
@@ -83,9 +101,27 @@ def main():
 
         print()
 
-    # What the app said when it got things wrong - the most useful detail
+    # Trap questions ask about something that is NOT there. They are the
+    # direct test of whether the vision model invents things - the most
+    # dangerous failure for a user who cannot check the answer.
+    traps = [r for r in rows
+             if r["kind"].startswith("question_") and "TRAP" in r["item"]]
+    if traps:
+        passed = sum(r["verdict"] == "correct" for r in traps)
+        made_up = sum(r["verdict"] == "made up" for r in traps)
+        print("=" * 64)
+        print(f"TRAP QUESTIONS   {passed}/{len(traps)} passed, "
+              f"{made_up} made up")
+        print("=" * 64)
+        for r in traps:
+            print(f"    {r['verdict']:<14} {r['item']}")
+        print()
+
+    # What the app said when it got things wrong - the most useful detail.
+    # .get() so a kind added later without a SUCCESS entry cannot crash this.
     wrong = [r for r in rows
-             if r["verdict"] not in SUCCESS[r["kind"]] and r.get("heard")]
+             if r["verdict"] not in SUCCESS.get(r["kind"], set())
+             and r.get("heard")]
     if wrong:
         print("=" * 64)
         print("WHAT IT SAID WHEN WRONG")

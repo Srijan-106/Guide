@@ -1,0 +1,86 @@
+timestamp,kind,item,lighting,distance,verdict,heard,notes
+2026-09-29T00:34:17,detection,bottle,bright,close,correct,bottle,"ANNOUNCING: cabinet/shelf, glasses, person"
+2026-09-29T00:38:08,detection,cup,bright,close,missed,,detected bu didnt speak | corrected 2026-10-06: heard was 'cup' - 'heard' held the on-screen label; nothing was spoken
+2026-09-29T00:38:49,detection,book,bright,close,missed,,
+2026-09-29T00:39:09,detection,phone,bright,close,correct,cell phone,
+2026-09-29T00:39:57,detection,cream tube,bright,close,missed,nothing,not detected
+2026-09-29T00:40:36,detection,spray bottle,bright,close,missed,,
+2026-09-29T00:41:03,detection,pen,bright,close,missed,nothing,not detected
+2026-09-29T00:41:18,detection,headphones,bright,close,correct,,
+2026-09-29T00:41:31,detection,keyboard,bright,close,correct,,
+2026-09-29T00:42:28,detection,bottle,normal,close,correct,,
+2026-09-29T00:42:37,detection,cup,normal,close,correct,,
+2026-09-29T00:43:27,detection,book,normal,close,correct,book,detected but laggy
+2026-09-29T00:43:44,detection,phone,normal,close,correct,,
+2026-09-29T00:44:13,detection,cream tube,normal,close,missed,,
+2026-09-29T00:44:18,detection,spray bottle,normal,close,missed,,
+2026-09-29T00:44:20,detection,pen,normal,close,missed,,
+2026-09-29T00:44:30,detection,headphones,normal,close,correct,,
+2026-09-29T00:45:18,detection,phone,dim,close,correct,,
+2026-09-29T00:45:32,detection,headphones,dim,close,correct,,
+2026-09-29T00:45:44,detection,keyboard,dim,close,correct,,
+2026-09-29T00:46:17,identify,bottle,normal,close,correct,,
+2026-09-29T00:46:39,identify,cup,normal,close,correct,,
+2026-09-29T00:47:13,identify,book,normal,close,no label,,
+2026-09-29T00:47:44,identify,phone,normal,close,correct,,
+2026-09-29T00:47:57,identify,spray bottle,normal,close,no label,,
+2026-09-29T00:48:01,identify,pen,normal,close,no label,,
+2026-09-29T00:48:39,identify,headphones,normal,close,wrong,,
+2026-09-29T00:49:19,identify,keyboard,normal,close,correct,,
+2026-09-29T00:49:41,reading,"BOLDFIT bottle (large, metallic)",normal,close,exact,,
+2026-09-29T00:50:17,reading,"Book cover (large, multi-line)",normal,close,partial,,
+2026-09-29T00:50:35,reading,Cream tube label (small print),normal,close,exact,,
+2026-09-29T00:51:19,reading,"Product back label (small, dense)",normal,close,partial,,
+2026-09-29T00:52:10,reading,Laptop or phone screen (backlit),normal,close,partial,,
+2026-09-29T00:52:24,reading,"Drink can (curved, shiny)",normal,close,exact,,
+2026-09-29T00:58:27,detection,keyboard,normal,close,correct,,
+2026-09-29T00:58:45,detection,bottle,dim,close,correct,,
+2026-09-29T00:59:30,detection,cup,dim,close,correct,,partally
+2026-09-29T01:00:14,identify,cream tube,normal,close,no label,,4
+2026-10-02T14:47:20,reading,Handwritten note - neat,normal,close,partial,,
+2026-10-02T14:47:54,reading,Handwritten note - normal,normal,close,nothing,,
+2026-10-06T18:08:34,detection,book,dim,close,missed,,
+2026-10-06T18:09:45,detection,cream tube,dim,close,missed,,it says gluco 6 but didnit told that it a cream tube | corrected 2026-10-06: verdict was 'correct' - the app read the label text but never named the object
+2026-10-06T18:10:08,detection,pen,dim,close,correct,pen,
+2026-10-06T18:10:42,identify,chair,normal,close,no label,,same as above chair | corrected 2026-10-06: verdict was 'correct' - app log shows PROMINENT: none - no object was named
+2026-10-06T18:34:00,detection,spray bottle,dim,close,missed,,
+2026-10-06T18:53:32,detection,chair,bright,close,missed,,corrected 2026-10-06: app announced chair at startup but the speech was dropped as too late (log)
+2026-10-06T18:54:20,reading,"BOLDFIT bottle (large, metallic)",dim,close,partial,boldfit,"corrected 2026-10-06: read on the 4th press; presses 1-3 read only '1', '1', '8'"
+2026-10-06T18:55:33,reading,Cream tube label (small print),dim,close,partial,,corrected 2026-10-06: verdict was 'exact' - app said 'glycol Acid cream 69 w': Glycolic and 6% were wrong
+2026-10-06T18:56:00,reading,"Product back label (small, dense)",dim,close,nothing,,
+2026-10-06T18:56:47,reading,Handwritten note - neat,dim,close,nothing,,corrected 2026-10-06: verdict was 'wrong' - log shows nothing was spoken
+2026-10-06T18:56:50,reading,Handwritten note - normal,dim,close,nothing,,corrected 2026-10-06: verdict was 'wrong' - log shows nothing was spoken
+2026-10-06T18:58:04,reading,"Drink can (curved, shiny)",dim,close,partial,,"corrected 2026-10-06: verdict was 'exact' - app said 'Pepsi' / 'PePSI, Sugar'; 'Zero' was never spoken"
+2026-10-06T19:05:15,reading,Laptop or phone screen (backlit),dim,close,partial,,"corrected 2026-10-06: app said '06.55, Kota Jn, Passenger Information, You can now book' - and the spell checker changed Hazrat to hazard, gmail.com to malcolm"
+2026-10-06T19:11:24,detection,chair,normal,close,correct,,
+2026-10-06T19:12:00,detection,chair,dim,close,missed,,
+2026-10-07T14:51:51,reading,"Book cover (large, multi-line)",dim,close,partial,clas mate 50 project,
+2026-10-07T14:53:32,voice_en,what is this -> identify,normal,-,correct,,
+2026-10-07T14:54:11,voice_en,what do you see around me -> describe,normal,-,correct,,
+2026-10-07T14:54:42,voice_en,say that again -> repeat,normal,-,correct,,
+2026-10-07T14:55:24,voice_en,read this for me -> read,normal,-,correct,classmate  50 project paper,
+2026-10-07T14:56:05,voice_en,go back to ambient mode -> ambient mode,normal,-,correct,,
+2026-10-07T14:56:18,voice_en,switch to reading mode -> reading mode,normal,-,correct,,
+2026-10-07T14:56:36,voice_en,speak in Hindi -> switch to Hindi,normal,-,correct,,
+2026-10-07T14:56:55,voice_hi,यह क्या है (yeh kya hai) -> identify,normal,-,correct,,
+2026-10-07T14:57:46,voice_hi,आसपास क्या दिख रहा है (aaspaas kya dikh raha hai) -> describe,normal,-,correct,,
+2026-10-07T14:58:07,voice_hi,फिर से बोलो (phir se bolo) -> repeat,normal,-,correct,,
+2026-10-07T14:58:30,voice_hi,इसे पढ़ो (ise padho) -> read,normal,-,correct,,
+2026-10-07T14:58:55,voice_hi,देखने का मोड (dekhne ka mode) -> ambient mode,normal,-,correct,,
+2026-10-07T14:59:18,voice_hi,पढ़ने का मोड चालू करो (padhne ka mode chalu karo) -> reading mode,normal,-,correct,,
+2026-10-07T14:59:30,voice_hi,इंग्लिश में बोलो (English mein bolo) -> switch to English,normal,-,correct,,
+2026-10-07T14:59:50,question_en,What am I wearing?,normal,-,correct,,
+2026-10-07T15:00:06,question_en,What colour is my shirt?,normal,-,correct,,
+2026-10-07T15:00:26,question_en,What is in my right hand? (hold a bottle),normal,-,correct,,
+2026-10-07T15:01:07,question_en,How many fingers am I holding up?,normal,-,correct,,
+2026-10-07T15:01:36,question_en,What is written on this bottle? (hold BOLDFIT),normal,-,correct,,
+2026-10-07T15:02:30,question_en,Is there a cup on the table? (TRAP: no cup in view),normal,-,correct,,
+2026-10-07T15:03:20,question_en,Is there a dog in this room? (TRAP),normal,-,correct,,
+2026-10-07T15:03:37,question_en,What colour is my watch? (TRAP: no watch on),normal,-,correct,,
+2026-10-07T15:04:24,question_hi,मैंने क्या पहना है? (maine kya pehna hai),normal,-,correct,,
+2026-10-07T15:05:29,translation,translation of: मैंने क्या पहना है? (maine kya pehna hai),normal,-,meaning kept,,
+2026-10-07T15:06:56,question_hi,मेरे हाथ में क्या है? (mere haath mein kya hai) (hold a bottle),normal,-,partly correct,both coreect but it was on my same hand,
+2026-10-07T15:08:16,question_hi,मेरी शर्ट किस रंग की है? (meri shirt kis rang ki hai),normal,-,correct,,
+2026-10-07T15:08:51,translation,translation of: मेरी शर्ट किस रंग की है? (meri shirt kis rang ki hai),normal,-,small error,,
+2026-10-07T15:09:28,question_hi,क्या यहाँ कोई कुत्ता है? (kya yahan koi kutta hai) (TRAP),normal,-,partly correct,,
+2026-10-07T15:09:56,translation,translation of: क्या यहाँ कोई कुत्ता है? (kya yahan koi kutta hai) (TRAP),normal,-,meaning kept,,

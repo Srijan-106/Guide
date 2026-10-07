@@ -54,3 +54,34 @@ timestamp,kind,item,lighting,distance,verdict,heard,notes
 2026-10-06T19:05:15,reading,Laptop or phone screen (backlit),dim,close,partial,,"corrected 2026-10-06: app said '06.55, Kota Jn, Passenger Information, You can now book' - and the spell checker changed Hazrat to hazard, gmail.com to malcolm"
 2026-10-06T19:11:24,detection,chair,normal,close,correct,,
 2026-10-06T19:12:00,detection,chair,dim,close,missed,,
+2026-10-07T14:51:51,reading,"Book cover (large, multi-line)",dim,close,partial,clas mate 50 project,"corrected 2026-10-07: Classmate project paper sheets, not a book; full text on the 2nd press"
+2026-10-07T14:53:32,voice_en,what is this -> identify,normal,-,correct,,
+2026-10-07T14:54:11,voice_en,what do you see around me -> describe,normal,-,correct,,
+2026-10-07T14:54:42,voice_en,say that again -> repeat,normal,-,correct,,"corrected 2026-10-07: heard 'What, repeat.' - the right action ran"
+2026-10-07T14:55:24,voice_en,read this for me -> read,normal,-,correct,classmate  50 project paper,
+2026-10-07T14:56:05,voice_en,go back to ambient mode -> ambient mode,normal,-,correct,,
+2026-10-07T14:56:18,voice_en,switch to reading mode -> reading mode,normal,-,correct,,
+2026-10-07T14:56:36,voice_en,speak in Hindi -> switch to Hindi,normal,-,correct,,
+2026-10-07T14:56:55,voice_hi,यह क्या है (yeh kya hai) -> identify,normal,-,correct,,
+2026-10-07T14:57:46,voice_hi,आसपास क्या दिख रहा है (aaspaas kya dikh raha hai) -> describe,normal,-,asked as question,,corrected 2026-10-07: verdict was 'correct' - heard 'आस पास का दिख रहा है' - no command matched; the vision model answered instead
+2026-10-07T14:58:07,voice_hi,फिर से बोलो (phir se bolo) -> repeat,normal,-,asked as question,,corrected 2026-10-07: verdict was 'correct' - heard 'मेरा ब्रेसलेट करो' - no command matched; the vision model answered instead
+2026-10-07T14:58:30,voice_hi,इसे पढ़ो (ise padho) -> read,normal,-,correct,,
+2026-10-07T14:58:55,voice_hi,देखने का मोड (dekhne ka mode) -> ambient mode,normal,-,correct,,
+2026-10-07T14:59:18,voice_hi,पढ़ने का मोड चालू करो (padhne ka mode chalu karo) -> reading mode,normal,-,correct,,
+2026-10-07T14:59:30,voice_hi,इंग्लिश में बोलो (English mein bolo) -> switch to English,normal,-,correct,,
+2026-10-07T14:59:50,question_en,What am I wearing?,normal,-,correct,,
+2026-10-07T15:00:06,question_en,What colour is my shirt?,normal,-,correct,,
+2026-10-07T15:00:26,question_en,What is in my right hand? (hold a bottle),normal,-,correct,,
+2026-10-07T15:01:07,question_en,How many fingers am I holding up?,normal,-,correct,,"corrected 2026-10-07: 1st ask: 'your hands are not visible' - true, the hand was not up yet; 2 fingers on the 2nd ask"
+2026-10-07T15:01:36,question_en,What is written on this bottle? (hold BOLDFIT),normal,-,correct,,"corrected 2026-10-07: a different bottle was used, not BOLDFIT; its sticker says 'WHEY BEFORE BAE', read correctly"
+2026-10-07T15:02:30,question_en,Is there a cup on the table? (TRAP: no cup in view),normal,-,correct,,
+2026-10-07T15:03:20,question_en,Is there a dog in this room? (TRAP),normal,-,correct,,
+2026-10-07T15:03:37,question_en,What colour is my watch? (TRAP: no watch on),normal,-,correct,,
+2026-10-07T15:04:24,question_hi,मैंने क्या पहना है? (maine kya pehna hai),normal,-,correct,,
+2026-10-07T15:05:29,translation,translation of: मैंने क्या पहना है? (maine kya pehna hai),normal,-,meaning kept,,
+2026-10-07T15:06:56,question_hi,मेरे हाथ में क्या है? (mere haath mein kya hai) (hold a bottle),normal,-,partly correct,both coreect but it was on my same hand,corrected 2026-10-07: 1st answer named only the phone ('yellow case'); the 2nd named phone and bottle but put them in different hands
+2026-10-07T15:08:16,question_hi,मेरी शर्ट किस रंग की है? (meri shirt kis rang ki hai),normal,-,wrong,,corrected 2026-10-07: verdict was 'correct' - 1st try heard 'किसर्ट किस कर रंग की है' and answered about the wall; grey only on the 3rd try
+2026-10-07T15:08:51,translation,translation of: मेरी शर्ट किस रंग की है? (meri shirt kis rang ki hai),normal,-,meaning kept,,"corrected 2026-10-07: verdict was 'small error' - judged on the 1st answer, which was translated faithfully; the 3rd answer garbled 'turtleneck' as 'टर्टलगेक'"
+2026-10-07T17:15:59,translation,translation of: मेरे हाथ में क्या है? (mere haath mein kya hai) (hold a bottle),normal,-,meaning changed,,corrected 2026-10-07: verdict was 'small error' - the 1st answer said 'yellow case'; the Hindi said 'पीला बैग' (yellow bag)
+2026-10-07T17:17:20,question_hi,क्या यहाँ कोई कुत्ता है? (kya yahan koi kutta hai) (TRAP),normal,-,correct,,
+2026-10-07T17:18:06,translation,translation of: क्या यहाँ कोई कुत्ता है? (kya yahan koi kutta hai) (TRAP),normal,-,meaning kept,,corrected 2026-10-07: verdict was 'small error' - 'No dog is visible in the image' -> 'चित्र में कोई कुत्ता दिखाई नहीं देता है' is faithful
