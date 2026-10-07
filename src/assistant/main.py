@@ -55,6 +55,7 @@ import easyocr
 from speech.tts import Speaker
 from language.phrases import phrase
 from display.hud import Hud
+from language.spelling import check_spelling
 
 # Voice commands need Whisper, which needs numba and llvmlite. Imported
 # optionally so that a failure in an optional feature cannot stop the
@@ -160,7 +161,9 @@ MAX_SPOKEN_WORDS = 6
 MAX_WORDS_READING = 20
 
 # Below this OCR confidence, a word that is not in the dictionary is
-# corrected to the nearest real word ("PERFORMANGE" -> "performance").
+# corrected to the nearest real word ("PERFORMANGE" -> "performance") -
+# but only when the change undoes a look-alike letter mix-up, so names
+# and brands are not "corrected" (see src/language/spelling.py).
 # Confident readings are left alone, so brand names read correctly -
 # BOLDFIT at 0.92 - are not "corrected" into ordinary words.
 SPELLCHECK_BELOW = 0.90
@@ -417,7 +420,9 @@ def clean_word(text, confidence):
     PROTEINa, Ikg":
       - "Ikg" -> "1 kg": OCR confuses 1 with I or l before a unit
       - "PERFORMANGE" -> "performance": a low-confidence word that is
-        not in the dictionary is corrected to the nearest real word
+        not in the dictionary is corrected to the nearest real word -
+        only when the change undoes a look-alike letter mix-up, so
+        names are kept (see src/language/spelling.py)
       - "BEAST" -> "Beast": all capitals can make the voice spell a
         word out letter by letter
     """
@@ -427,14 +432,17 @@ def clean_word(text, confidence):
 
     words = []
     for word in text.split():
-        if (spell is not None and confidence < SPELLCHECK_BELOW
-                and word.isalpha() and len(word) >= 5
-                and not spell.known([word.lower()])):
-            fixed = spell.correction(word.lower())
-            if fixed and fixed != word.lower():
-                if DEBUG:
-                    print(f"  [spelling] {word} -> {fixed}")
-                word = fixed
+        # Corrected only when the change undoes a look-alike letter
+        # mix-up - see src/language/spelling.py for why
+        spoken, suggestion, accepted = check_spelling(
+            word, confidence, spell, SPELLCHECK_BELOW)
+        if suggestion and DEBUG:
+            if accepted:
+                print(f"  [spelling] {word} -> {suggestion}")
+            else:
+                print(f"  [spelling] kept {word} (not '{suggestion}': "
+                      f"not a look-alike letter mix-up)")
+        word = spoken
 
         if word.isupper() and len(word) > 3:
             word = word.capitalize()
