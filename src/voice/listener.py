@@ -40,6 +40,14 @@ MIN_SECONDS = 0.4
 # Told to Whisper before it listens, so that when a word is unclear it
 # leans towards the words this application actually uses. This matters
 # most for accents the model saw less of in training.
+#
+# The prompt can also be COPIED: when Whisper is unsure, it may borrow
+# words from it. On 7 October "फिर से बोलो" was transcribed as "मेरा
+# ब्रेसलेट करो" - "मेरा ब्रेसलेट" taken straight from the example question
+# that used to end the Hindi prompt. So the Hindi prompt now holds every
+# command phrase the user is likely to say, and only one example question,
+# with no specific object in it. (The English prompt scored 7/7 in the
+# same tests and is unchanged.)
 VOCABULARY_PROMPTS = {
     "en": (
         "Commands: read this, what is this, identify, describe, repeat, "
@@ -47,9 +55,9 @@ VOCABULARY_PROMPTS = {
         "am I wearing, what colour is my bracelet, what does the label say."
     ),
     "hi": (
-        "कमांड: पढ़ो, यह क्या है, पहचानो, क्या दिख रहा है, दोबारा, "
-        "पढ़ने का मोड, इंग्लिश, बंद करो। सवाल जैसे: मैंने क्या पहना है, "
-        "मेरा ब्रेसलेट किस रंग का है।"
+        "कमांड: पढ़ो, यह क्या है, पहचानो, आसपास क्या दिख रहा है, "
+        "फिर से बोलो, दोबारा, पढ़ने का मोड, देखने का मोड, इंग्लिश, "
+        "बंद करो। सवाल जैसे: मैंने क्या पहना है।"
     ),
 }
 
@@ -89,12 +97,16 @@ def normalise(text):
     Lower-cases English, removes punctuation (including the Devanagari
     full stop "।"), and removes the nukta dot - Whisper may write पढ़ो or
     पढो, ज़रा or जरा, and both should match the same keyword.
+
+    Also joins "आस पास" into "आसपास": both spellings are common, and on
+    7 October Whisper wrote it as two words, so no keyword matched.
     """
     text = unicodedata.normalize("NFD", text.lower())
-    text = text.replace("\u093c", "")          # the nukta dot
+    text = text.replace("़", "")          # the nukta dot
     for mark in ".,!?।":
         text = text.replace(mark, " ")
-    return " ".join(text.split())
+    text = " ".join(text.split())
+    return text.replace("आस पास", "आसपास")
 
 
 class VoiceListener:
@@ -246,7 +258,10 @@ COMMANDS = {
         ("ambient_mode",     ["देखने का मोड", "देखने वाला मोड", "एम्बिएंट"]),
         ("identify",         ["यह क्या है", "ये क्या है", "क्या है यह", "क्या है ये",
                               "पहचानो", "पहचान"]),
-        ("describe",         ["क्या दिख रहा", "आसपास क्या", "डिस्क्राइब"]),
+        # "आसपास का" added 7 October: Whisper heard "आसपास क्या दिख रहा है"
+        # as "आस पास का दिख रहा है" - "क्या" shortened to "का"
+        ("describe",         ["क्या दिख रहा", "आसपास क्या", "आसपास का",
+                              "डिस्क्राइब"]),
         ("read",             ["पढ़ो", "पढ़िए", "पढ़ के", "पढ़कर", "रीड"]),
         ("repeat",           ["दोबारा", "फिर से", "दोहराओ", "रिपीट"]),
         ("quit",             ["बंद करो", "बंद कर दो", "रुको", "स्टॉप"]),
