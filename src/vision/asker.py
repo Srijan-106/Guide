@@ -49,6 +49,7 @@ it to admit uncertainty.
 """
 
 import threading
+import time
 
 import cv2
 import ollama
@@ -77,6 +78,21 @@ VISION_PROMPT = (
 # every question after it was refused - five in a row in one test.
 TIMEOUT_SECONDS = 30
 
+# The first question after a pause is much slower: Ollama unloads the
+# model from GPU memory after about 5 idle minutes, and loading 3.5 GB
+# back takes time - with detection, OCR and speech recognition already
+# using the same GPU. On 7 October the first question of a session failed
+# with "timed out" at 30 s. The first request therefore gets its own,
+# longer limit, and KEEP_ALIVE then holds the model in memory so the
+# questions after it stay fast.
+COLD_TIMEOUT_SECONDS = 120
+
+# How long Ollama keeps the model loaded after a question. Longer than
+# its 5-minute default, so a demonstration or a conversation does not
+# pay the loading cost again halfway through. The cost is that the model
+# holds about 3.5 GB of GPU memory for this long after the last question.
+KEEP_ALIVE = "20m"
+
 # Maximum length of an answer, in tokens. Two short sentences fit easily.
 MAX_ANSWER_TOKENS = 200
 
@@ -90,6 +106,10 @@ class VisionAsker:
         self.translator = translator
         self.busy = threading.Event()
         self.client = ollama.Client(timeout=TIMEOUT_SECONDS)
+
+        # Used until the model has answered once - see COLD_TIMEOUT_SECONDS
+        self.cold_client = ollama.Client(timeout=COLD_TIMEOUT_SECONDS)
+        self.model_is_loaded = False
 
         # Fail here, at startup, rather than when the user first asks:
         # the application can then report that the feature is unavailable
@@ -141,11 +161,22 @@ class VisionAsker:
         if images:
             message["images"] = images
 
-        response = self.client.chat(
+        # A cold model may take a minute to load; once it has answered,
+        # the shorter limit applies, so a real failure is reported quickly
+        client = self.client if self.model_is_loaded else self.cold_client
+
+        started = time.time()
+        response = client.chat(
             model=self.model,
             messages=[message],
             options={"num_predict": max_tokens},
+            keep_alive=KEEP_ALIVE,
         )
+        if not self.model_is_loaded:
+            self.model_is_loaded = True
+            print(f"  [vision] model loaded and answered in "
+                  f"{time.time() - started:.1f} s")
+
         answer = response["message"]["content"].strip()
 
         # Safety net, in case reasoning text ever arrives

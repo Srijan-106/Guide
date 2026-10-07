@@ -14,6 +14,13 @@ worker thread owns it for the duration of each utterance, and a fresh
 engine is created each time (the Day 5 fix for it falling silent after the
 first announcement).
 
+The very FIRST online failure falls back to the offline voice for that
+same announcement, so nothing is lost to one dropped network packet. On
+7 October a book cover was read correctly and then never spoken, because
+the internet blinked at that moment and the old code only fell back after
+a second failure. A dead network also counts as a failure after
+ONLINE_TIMEOUT_SECONDS, instead of hanging.
+
 Queue behaviour:
   priority   - an announcement the user asked for jumps ahead of queued
                ambient chatter and stops whatever is playing
@@ -33,6 +40,15 @@ import edge_tts
 import pygame
 import pyttsx3
 
+# The longest the online voice may take to produce an announcement before
+# it counts as a failure and the offline voice says it instead. Without a
+# limit, a dead network does not fail - it hangs: on 7 October, with Wi-Fi
+# switched off, no error appeared at all and every announcement waited
+# behind the stuck one, in silence. Short announcements normally arrive in
+# about a second; on a slow connection, 5 s may occasionally trip early,
+# which costs one announcement in the less natural Windows voice.
+ONLINE_TIMEOUT_SECONDS = 5
+
 
 class Speaker:
     def __init__(self, voice="en-IN-NeerjaNeural"):
@@ -50,11 +66,20 @@ class Speaker:
         self._stopping = threading.Event()      # program is shutting down
         self._interrupt = threading.Event()     # cut short what is playing
 
-        # Counts consecutive failures, so the app can tell the user that
-        # speech itself has stopped working - which cannot be announced
-        # by speaking
+        # Counts announcements that NEITHER voice could speak, so the app
+        # can tell the user that speech itself has stopped working - which
+        # cannot be announced by speaking
         self.consecutive_failures = 0
         self.last_error = ""
+
+        # Counts online failures in a row. One is a blip: only the
+        # announcement that failed uses the offline voice. Two means the
+        # network is gone: speech stays offline until the main loop calls
+        # try_online_again(). Kept separate from the count above, which is
+        # reset whenever the user hears something - if the two were one
+        # counter, a rescued announcement would reset it and speech would
+        # never switch to offline, waiting for the dead network every time.
+        self._online_failures = 0
 
         # True once speech has switched to the offline Windows voice
         self.offline = False
@@ -89,8 +114,14 @@ class Speaker:
             self._condition.notify()
 
     def is_working(self):
-        """False only when speech has failed with no working fallback."""
-        return self.offline or self.consecutive_failures < 2
+        """False once two announcements in a row could not be spoken at all.
+
+        Counts failures of BOTH voices: an online failure that the offline
+        voice rescued does not count, because the user heard it. (The old
+        version returned True whenever speech was offline, which hid the
+        case of the offline voice failing too.)
+        """
+        return self.consecutive_failures < 2
 
     def is_offline(self):
         """True while using the Windows built-in voice."""
@@ -102,6 +133,7 @@ class Speaker:
             print("  [speech] trying the online voice again")
             self.offline = False
             self.consecutive_failures = 0
+            self._online_failures = 0
 
     def failure_reason(self):
         """A short explanation of why speech is failing, for the terminal."""
@@ -158,27 +190,50 @@ class Speaker:
                     self._speak_offline(text)
                 else:
                     self._speak_online(text)
+                    self._online_failures = 0
                 self.consecutive_failures = 0
 
             except Exception as error:
                 if self._stopping.is_set():
                     continue
 
-                self.consecutive_failures += 1
                 self.last_error = str(error)
                 print(f"  [speech error] {error}")
 
-                # After two online failures, switch to the offline voice
-                # and retry this announcement rather than losing it
-                if not self.offline and self.consecutive_failures >= 2:
-                    print("  [speech] switching to offline voice")
-                    self.offline = True
-                    try:
-                        self._speak_offline(text)
-                        self.consecutive_failures = 0
-                    except Exception as offline_error:
-                        print(f"  [speech error] offline voice also failed: "
-                              f"{offline_error}")
+                spoken = False
+                if not self.offline:
+                    # The online voice failed. Say it with the offline
+                    # voice rather than lose it - on the FIRST failure,
+                    # since the user may have asked for this announcement.
+                    self._online_failures += 1
+                    spoken = self._rescue_with_offline_voice(text)
+
+                    # Twice in a row is a dead network rather than a blip:
+                    # stay offline, so later announcements are not delayed
+                    # by waiting for the network every time
+                    if self._online_failures >= 2:
+                        print("  [speech] switching to the offline voice")
+                        self.offline = True
+
+                if spoken:
+                    self.consecutive_failures = 0     # the user heard it
+                else:
+                    self.consecutive_failures += 1
+
+    def _rescue_with_offline_voice(self, text):
+        """Speak text with the Windows voice after an online failure.
+
+        Returns True if it was spoken.
+        """
+        print("  [speech] online voice failed - saying it with the "
+              "offline voice")
+        try:
+            self._speak_offline(text)
+            return True
+        except Exception as offline_error:
+            print(f"  [speech error] the offline voice also failed: "
+                  f"{offline_error}")
+            return False
 
     # -----------------------------------------------------------------
     # The two engines
@@ -190,8 +245,18 @@ class Speaker:
             temp_path = temp_file.name
 
         try:
-            # edge-tts is asynchronous, so it runs in its own event loop
-            asyncio.run(self._generate(text, temp_path))
+            # edge-tts is asynchronous, so it runs in its own event loop -
+            # with a time limit, because a dead network hangs rather than
+            # failing (see ONLINE_TIMEOUT_SECONDS)
+            try:
+                asyncio.run(asyncio.wait_for(self._generate(text, temp_path),
+                                             ONLINE_TIMEOUT_SECONDS))
+            except asyncio.TimeoutError:
+                # The words "network" and "timeout" let failure_reason()
+                # report this as "no internet connection"
+                raise ConnectionError(
+                    f"no reply from the online voice within "
+                    f"{ONLINE_TIMEOUT_SECONDS} s (network timeout)")
 
             if self._stopping.is_set():
                 return
