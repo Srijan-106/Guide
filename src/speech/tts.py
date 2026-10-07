@@ -27,6 +27,12 @@ Queue behaviour:
   expires_in - an ambient announcement is dropped if it cannot be spoken
                within that many seconds, since a late announcement
                describes a scene that has already changed
+  merging    - ambient announcements waiting back to back are spoken as
+               one sentence ("chair, hat, pillow"), with repeats removed.
+               At startup the camera finds objects a frame at a time, so
+               4-5 separate announcements queued up; spoken one by one, at
+               about 2 s each, the later ones passed their expiry and were
+               dropped - in all three startups logged on 6-7 October.
 """
 
 import asyncio
@@ -178,6 +184,13 @@ class Speaker:
                     return
                 text, expiry = self._queue.popleft()
 
+                # An ambient announcement takes the others waiting right
+                # behind it, so they are spoken as one sentence
+                if expiry is not None:
+                    text, expiry = self._merge_waiting_ambient(text, expiry)
+                    if text is None:
+                        continue          # every part had expired
+
             # Skip announcements that waited too long to still be useful
             if expiry is not None and time.time() > expiry:
                 print(f"  [speech] dropped (too late): {text}")
@@ -219,6 +232,48 @@ class Speaker:
                     self.consecutive_failures = 0     # the user heard it
                 else:
                     self.consecutive_failures += 1
+
+    def _merge_waiting_ambient(self, text, expiry):
+        """Join an ambient announcement with the ambient ones queued
+        directly behind it. Called with the queue's lock held.
+
+        Ambient announcements are object lists ("chair, glasses"), so
+        they are split on ", " to remove repeats - "cabinet/shelf" queued
+        twice is said once. Parts that have already expired are dropped
+        as before. Only announcements directly behind are taken, so the
+        order of everything else in the queue is unchanged.
+
+        Returns (merged text, latest expiry), or (None, None) if every
+        part had expired.
+        """
+        now = time.time()
+        labels = []
+        latest_expiry = expiry
+        fresh_parts = 0                   # announcements actually kept
+
+        def take(part, part_expiry):
+            nonlocal fresh_parts
+            if now > part_expiry:
+                print(f"  [speech] dropped (too late): {part}")
+                return
+            fresh_parts += 1
+            for label in part.split(", "):
+                if label and label not in labels:
+                    labels.append(label)
+
+        take(text, expiry)
+        while self._queue and self._queue[0][1] is not None:
+            part, part_expiry = self._queue.popleft()
+            take(part, part_expiry)
+            latest_expiry = max(latest_expiry, part_expiry)
+
+        if not labels:
+            return None, None
+
+        merged = ", ".join(labels)
+        if fresh_parts > 1:
+            print(f"  [speech] merged {fresh_parts} announcements: {merged}")
+        return merged, latest_expiry
 
     def _rescue_with_offline_voice(self, text):
         """Speak text with the Windows voice after an online failure.
