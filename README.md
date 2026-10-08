@@ -1,8 +1,10 @@
 # Guide (VisionAssist)
 
-A software-first AI accessibility assistant for blind and visually impaired users. Point a camera at the world and hear what is there: the objects around you, and the text on labels, signs and packaging.
+A software-first AI accessibility assistant for blind and visually impaired users. Point a camera at the world and hear what is there: the objects around you, the text on labels, signs and packaging, and answers to your own questions about what the camera sees, in English or Hindi.
 
 Built as a first major end-to-end machine learning project, with an emphasis on honest evaluation: documented failures, measured results, and the reasoning behind every decision.
+
+Everything runs on the laptop except the natural voice. **Camera images never leave the machine**; only the text to be spoken is sent to the online voice service, and without internet the Windows voice is used instead.
 
 ---
 
@@ -11,40 +13,96 @@ Built as a first major end-to-end machine learning project, with an emphasis on 
 | Feature | Status |
 |---|---|
 | Real-time object detection (365 object types), announced aloud | Working |
-| Text reading (OCR), announced in reading order | Working |
+| Text reading (OCR), in reading order, with careful spelling correction | Working |
 | Spoken summary of everything in view, on demand | Working |
-| Identify an object and read the text on it | Working |
-| Repeat the last announcement | Working |
+| Identify a held-up object and read the text on it | Working |
+| Voice commands (push-to-talk), in English and Hindi | Working |
+| Open questions about what the camera sees ("what am I wearing?"), answered by a local vision model | Working |
+| Hindi mode: Hindi voice, Hindi commands, and answers translated into Hindi | Working |
+| Live on-screen captions of everything said, for sighted helpers | Working |
+| Repeat the last thing said | Working |
 
 The application runs in two modes:
 
-- **Ambient mode** (default) — announces objects as they appear. Passive awareness: *what is around me?*
-- **Reading mode** — object announcements are silenced; press SPACE to read text aloud. Deliberate inquiry: *what does this say?*
+- **Ambient mode** (default): announces objects as they appear. Passive awareness: *what is around me?*
+- **Reading mode**: object announcements are silenced; SPACE reads text aloud. Deliberate inquiry: *what does this say?*
 
 Modes exist because testing showed object announcements interrupting text readings, which was confusing in practice.
+
+Hindi mode is **Hinglish** by design: sentences in Hindi, object names in English ("मुझे दिख रहा है: bottle, chair"), which is how most Hindi speakers say them.
 
 ## Controls
 
 | Key | Action |
 |---|---|
 | M | Switch between Ambient and Reading mode |
-| SPACE | Read text in view (Reading mode) |
+| SPACE | Read the text in view (Reading mode): up to 20 words, no object name |
 | D | Describe everything currently visible |
-| I | Identify an object and read any text on it |
-| R | Repeat the last announcement |
+| I | "What is this?": name the held-up object and read a few words on it |
+| R | Repeat the last thing said |
+| V | Speak: press to start, press again to stop. A command, or any question about what the camera sees |
+| L | Switch language: English / Hindi |
 | Q | Quit |
+
+Voice commands do the same as the keys: "read this", "what is this", "describe", "repeat", "reading mode", "ambient mode", "Hindi", "stop", and their Hindi equivalents ("पढ़ो", "यह क्या है", "आसपास क्या दिख रहा है", "फिर से बोलो" …). Anything that is not a command is treated as a question for the vision model.
 
 The video window must be focused (clicked) for keys to register.
 
 ---
 
+## Installation
+
+One line in **Windows PowerShell**:
+
+    git clone https://github.com/Srijan-106/Guide.git; cd Guide; python setup.py
+
+`setup.py` checks your computer first (Python, GPU, driver, GPU memory, disk space, Ollama), creates the project's own virtual environment, installs everything, downloads the models, and ends with a table of which features are ready. Optional parts can be skipped with `--no-hindi` or `--no-vision`, and `--cpu` installs without GPU support.
+
+**Before you start:** Python 3.12 or newer and Git. For visual questions, also [Ollama](https://ollama.com).
+
+| Requirement | Measured |
+|---|---|
+| Operating system | Windows 10 or 11 (tested on 11) |
+| GPU, core features | NVIDIA, 4 GB (detection, OCR and speech recognition used about 3.3 GB) |
+| GPU, with visual questions | NVIDIA, 8 GB (7.7 of 8 GB in use with everything loaded) |
+| Disk | About 6 GB, or 12 GB with everything |
+| Internet | For setup, and for the natural voice |
+
+Without an NVIDIA GPU everything still runs on the CPU, much more slowly.
+
+Full setup guide: [docs/setup.md](docs/setup.md) · Troubleshooting (RTX 50-series, Windows Smart App Control): [docs/gpu-setup.md](docs/gpu-setup.md)
+
+## Running
+
+From the project folder:
+
+    .venv\Scripts\python src\assistant\main.py
+
+---
+
+## Measured results
+
+86 tests, each fixed before testing began, recorded as it was run, and checked afterwards against the application's own log. Method and every correction: [docs/devlog.md](docs/devlog.md) (Days 9, 12 and 13).
+
+| Feature | Success | Notes |
+|---|---|---|
+| Object detection | 17/30 = 56.7% | bottle, phone, headphones, keyboard 12/12; cream tube, spray bottle 0/6 |
+| Object identification | 4/10 = 40% | 4 correct, 5 named nothing and read the text instead, 1 wrong |
+| Text reading (exact or partial) | 12/16 = 75% | normal light 7/8, dim 5/8; only 3 exact |
+| Voice commands, English | 7/7 | transcribed in 0.4–1.1 s |
+| Voice commands, Hindi | 5/7 | 2 misheard; transcribed in 0.8–2.5 s |
+| Visual questions, English | 8/8 | |
+| Visual questions, Hindi | 2/4 | 1 partly correct, 1 wrong (the question was misheard) |
+| Hindi translation | 3/4 | "yellow case" became "yellow bag" |
+| **Trap questions** (asking about things that are not there) | **4/4 passed, 0 made up** | no cup, no dog, no watch: each answered "there is none" |
+
+**Object detection is reliable for common objects and blind to items outside the model's vocabulary.** Every failure was silence, never a wrong object name, which is the safer failure for a user who cannot check. The app reads the text on such items instead, which for a product is usually the more useful half.
+
+**What these numbers do not show:** one attempt per test, one speaker, one room, one front-facing laptop webcam. 100% on 7 or 8 tests is promising, not proof. Handwriting is largely not read. The 86 results describe the application before the fixes made on Day 13; each of those fixes was checked separately.
+
 ## Evaluation highlights
 
-**OCR engine.** Tesseract failed on curved, metallic and stylised text. EasyOCR read all the same test objects correctly — for example "BOLDFIT" on a metallic bottle at 0.99 confidence, where Tesseract returned garbage.
-
-**OCR reading order.** EasyOCR returns text in its own detection order. Sorting results by position turned `USA, Edition, Global, Silberschatzs, OPERATING, SYSTEM, CONCEPTS` into `Edition, Silberschatzs, OPERATING, SYSTEM, CONCEPTS`.
-
-**OCR filtering.** A flat confidence threshold discarded the most useful readings: "Glycolic Acid Cream 6% w/w" scored 0.35 and was dropped, while the fragment "Glyco 6" scored 0.80. Length-aware thresholds fixed this.
+**OCR engine.** Tesseract failed on curved, metallic and stylised text. EasyOCR read the same objects correctly, for example "BOLDFIT" on a metallic bottle at 0.99 confidence, where Tesseract returned garbage.
 
 **Detection model.** Three models were compared on everyday objects:
 
@@ -52,95 +110,66 @@ The video window must be focused (clicked) for keys to register.
 |---|---|
 | YOLO26, COCO (80 classes) | Pen detected as "toothbrush"; no glasses, pillows or slippers |
 | YOLOv8, Open Images (600 classes) | Rejected: announced "Man", "Person" and "Human face" for one person |
-| **YOLO26, Objects365 (365 classes)** | **Chosen:** glasses (0.91), bracelet (0.76), pillow, slippers — one label per object |
+| **YOLO26, Objects365 (365 classes)** | **Chosen:** glasses (0.91), bracelet (0.76), pillow, slippers; one label per object |
 
-**Performance.** 31–43 FPS with detection and OCR loaded, at 1280x720, using about 300 MB of GPU memory on an RTX 5060 Laptop GPU. Text reading runs on a background thread, so the video does not pause while it works.
+**Vision model.** Five local vision-language models were tried. Three gave confident wrong answers (wrong shirt colour, text invented on a bottle), and the feature was first dropped. Qwen3-VL answered accurately; its 8B version was too large to share an 8 GB GPU with the rest of the app (one answer took 95 s), and the **4B Instruct** version answers in a few seconds.
 
-**Failure behaviour.** A missing model or busy camera is reported in plain language at startup. A camera lost mid-session is announced and retried for three seconds. If speech itself fails — which cannot be announced by speaking — the app beeps every ten seconds and shows a warning on screen. Without internet it switches to the Windows built-in voice, and returns to the online voice automatically when the network comes back.
+**Hindi answers.** Asked to answer in Hindi directly, the vision model invented objects, so it answers in English and the answer is translated. The vision model's own translation changed facts ("on the right wrist" became "on the knee of the right hand"), and Google's free endpoint refused every request. **NLLB-200** translated all four test sentences correctly on the CPU, with a glossary that keeps object names intact and a small step that fixes two of its grammar slips.
 
-Full details: [docs/devlog.md](docs/devlog.md)
+**Spelling correction.** A spell checker fixed OCR slips (PERFORMANGE → performance) but also damaged names (Glycolic → glycol, Hazrat → hazard). Every helpful correction swapped letters that look alike; every damaging one did not. Corrections are now accepted only for look-alike letters: 22 of 22 logged cases handled correctly.
 
----
+**Failure behaviour.** A missing model or busy camera is reported in plain language at startup. A camera lost mid-session is announced and retried. If the internet drops, the very first failed announcement is spoken again with the Windows voice, and speech stays offline until the network returns. If speech fails entirely, which cannot be announced by speaking, the app beeps every ten seconds. Optional features (voice commands, visual questions, Hindi translation) switch themselves off if unavailable, and the rest keeps working.
 
-## Measured results
+## Performance
 
-39 tests, recorded as they were run, on a front-facing laptop webcam in one room.
-Method and full caveats: [docs/devlog.md](docs/devlog.md) (Day 9).
-
-**Object detection is reliable for common objects and blind to items outside the
-model's vocabulary.** Every failure was silence, never a wrong answer:
-
-| Always detected (13/13) | Never detected (0/6) |
+| Measurement | Value |
 |---|---|
-| bottle, phone, headphones, keyboard | cream tube, spray bottle, pen |
-
-The second group is not in Objects365's 365 classes, so the app reads their text
-instead — which for a product is usually the more useful half.
-
-| Feature | Result | Tests |
-|---|---|---|
-| Text reading | 100% usable (3 exact, 3 partial) | 6 |
-| Object detection | 66.7% | 24 |
-| Object identification | 44.4% (4 correct, 4 no label, 1 wrong) | 9 |
-
-**What these numbers do not show:** reading was tested 6 times of a planned 16,
-and handwritten notes were never tested — handwriting is significantly harder
-for OCR. The per-lighting breakdown is not reported, because too few tests ran
-in each condition for it to mean anything.
+| Object detection (YOLO inference) | about 4–5 ms per frame on the GPU |
+| Video with detection running | 34–35 FPS (measured on Day 6, before the current display) |
+| GPU memory | about 3.3 GB without visual questions; 7.7 of 8 GB with everything loaded |
+| Visual question, app running | 3–5 s to the start of the answer |
+| Hindi translation (NLLB, CPU) | 1.2–1.9 s per sentence |
 
 ## Known limitations
 
-- **Speech needs internet for the better voice.** Without it, speech falls back to the Windows built-in voice, which sounds noticeably more robotic. Images are processed locally; only the text to be spoken is sent to the speech service.
-- **Many specific products are not recognised** — cream tubes, spray bottles and paper cups are not among the model's 365 classes. The app reads their text instead, which is usually the more useful half.
+- **Speech needs internet for the natural voice.** Without it, the Windows voice is used, which sounds noticeably more robotic.
+- **Many specific products are not recognised.** Cream tubes and spray bottles are not among the model's 365 classes; the pen is a class but is rarely detected. The app reads their text instead.
+- **Handwriting is largely not read.** Neat handwriting only in good light.
+- **A misheard question gets a confident answer to a different question.**
+- **Hindi speech recognition is weaker than English.**
+- **Visual questions need an 8 GB GPU**, and the model can state details it is unsure of, so answers are spoken as "It looks like …".
+- **Identification picks the smallest box covering the centre**, so a box drawn inside a held object can win.
+- **Objects at the edge of the frame can flicker** and be announced again.
 - **Printed faces** on posters or photographs can be announced as "person".
-- **SPACE and I currently do the same thing**, differing only in that SPACE requires reading mode.
-- **Diagnostic output** prints every detection on each identification — useful while developing, noisy for a demonstration.
-- **Headphones cannot be identified deliberately** while `CAMERA_FACES_USER` is true: worn items are excluded from the held-object choice, which prevents a common wrong answer at the cost of this rare one. Setting it to false removes the conflict.
 - Tested on one machine, running Windows 11 with a front-facing laptop webcam.
-
----
-
-## Installation
-
-Requires Python 3.13 and Windows. An NVIDIA GPU is strongly recommended.
-
-    git clone https://github.com/Srijan-106/Guide.git
-    cd Guide
-    python -m venv .venv
-    .venv\Scripts\activate
-
-Install PyTorch with GPU support first (it is not on PyPI's default index):
-
-    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
-
-Then the remaining dependencies:
-
-    pip install -r requirements.txt
-
-GPU setup, RTX 50-series notes, and Windows Smart App Control issues: [docs/gpu-setup.md](docs/gpu-setup.md)
-
-## Running
-
-    python src\assistant\main.py
 
 ---
 
 ## Project structure
 
     Guide/
+    ├── setup.py                     one-command installer
     ├── src/
-    │   ├── assistant/main.py      the application
-    │   └── speech/tts.py          text-to-speech module
-    ├── archive/                   deprecated standalone scripts, kept for reference
-    │   ├── detection/detect.py    first detection program (Days 2-5)
-    │   └── ocr/                   first OCR programs (Days 4-5)
-    ├── src/evaluation/            test recorder and analysis scripts
-    ├── evaluation/results.csv     recorded test results
-    ├── models/                    pretrained model files
-    ├── docs/                      development log, GPU setup, images
+    │   ├── assistant/main.py        the application: camera, modes, keys, commands
+    │   ├── speech/tts.py            speech queue, online voice, offline fallback
+    │   ├── voice/listener.py        microphone, Whisper, voice commands
+    │   ├── vision/asker.py          visual questions through Ollama
+    │   ├── language/
+    │   │   ├── phrases.py           every spoken sentence, English and Hindi
+    │   │   ├── translator.py        NLLB translation, glossary, grammar polishing
+    │   │   └── spelling.py          look-alike-letter spelling correction
+    │   ├── display/
+    │   │   ├── hud.py               captions, status, key strip, detection boxes
+    │   │   └── shaping.py           Hindi text shaping (HarfBuzz)
+    │   ├── bidi/                    stand-in for python-bidi (see its docstring)
+    │   └── evaluation/              test recorder, analysis, correction and check scripts
+    ├── evaluation/results.csv       recorded test results
+    ├── models/                      the detection model
+    ├── archive/                     earlier standalone scripts, kept for reference
+    ├── docs/                        development log, setup guides, images
     └── requirements.txt
 
-The files in `archive/` were superseded by `src/assistant/main.py`. They are kept because the development log describes how they were built.
+The files in `archive/` were superseded by the application. They are kept because the development log describes how they were built.
 
 ---
 
@@ -155,9 +184,14 @@ The files in `archive/` were superseded by `src/assistant/main.py`. They are kep
 - **Day 5 (Part A)** — Upgraded to YOLO26; replaced pyttsx3 with edge-tts after five failures; length-aware OCR filtering; portability fixes.
 - **Day 6** — Detection and OCR integrated into one application with mode switching; OCR reading order fixed.
 - **Day 6 (Part A)** — Describe, identify and repeat commands; upgraded to an Objects365-pretrained model (365 classes).
-- **Day 7** — Diagnosed a Windows Smart App Control block, migrated to stable PyTorch 2.11 (CUDA 12.8) — correcting the Day 1 nightly-build choice — and tidied the repository.
-- **Day 8** — Made the application robust: text reading moved to a background thread so the video no longer freezes; speech given priority, batching and cooldowns after a five-second backlog; camera, model and speech failures explained aloud or by beep; and an offline voice fallback for when the internet drops.
-- **Day 9** — Systematic evaluation: 39 recorded tests across detection, identification and reading, with the results and their limits documented.
+- **Day 7** — Diagnosed a Windows Smart App Control block, migrated to stable PyTorch 2.11 (CUDA 12.8), correcting the Day 1 nightly-build choice, and tidied the repository.
+- **Day 8** — Made the application robust: background text reading, prioritised and batched speech, failures explained aloud or by beep, and an offline voice fallback.
+- **Day 9** — Systematic evaluation method, recording and analysis scripts; the first 39 of 56 planned tests recorded.
+- **Day 10** — Voice commands with local Whisper (push-to-talk); separate jobs for SPACE and I; a debug switch; an Indian English voice; a stand-in for a blocked package.
+- **Day 11** — Visual questions with a local vision model after comparing five; Hindi mode with local NLLB translation and a glossary; a new display with live English and Hindi captions.
+- **Day 12** — Checked GPU memory and speed; finished the Day 9 tests, with every result checked against the app's log; wrote the test plan for the new features before testing.
+- **Day 13** — Tested voice, vision and Hindi features (86 tests in total, 4/4 trap questions passed); rebuilt the Hindi glossary; fixed the slow first answer, lost speech on network failure, dropped announcements, Hindi command recognition and the spell checker.
+- **Day 14** — Repeat replays the last real message; Hindi model warm-up; one-line setup for other machines; the codebase read against its records; repository history cleaned (234 MB → 45.5 MB).
 
 Full day-by-day record: [docs/devlog.md](docs/devlog.md)
 
@@ -165,9 +199,17 @@ Full day-by-day record: [docs/devlog.md](docs/devlog.md)
 
 ## Models and attribution
 
-- **Object detection:** [Ultralytics YOLO26](https://docs.ultralytics.com/), pretrained on Objects365
-- **Text reading:** [EasyOCR](https://github.com/JaidedAI/EasyOCR)
-- **Speech:** [edge-tts](https://pypi.org/project/edge-tts/), using Microsoft Edge's online voices, with [pyttsx3](https://pypi.org/project/pyttsx3/) as an offline fallback
+| Part | Model or library | Licence |
+|---|---|---|
+| Object detection | [Ultralytics YOLO26](https://docs.ultralytics.com/), pretrained on Objects365 | AGPL-3.0 |
+| Text reading | [EasyOCR](https://github.com/JaidedAI/EasyOCR) | Apache-2.0 |
+| Speech recognition | [OpenAI Whisper](https://github.com/openai/whisper) ("small"), run locally | MIT |
+| Visual questions | [Qwen3-VL 4B Instruct](https://ollama.com/library/qwen3-vl), run locally with [Ollama](https://ollama.com) | see the model page |
+| Hindi translation | [NLLB-200 distilled 600M](https://huggingface.co/facebook/nllb-200-distilled-600M) (Meta), run locally | **CC-BY-NC 4.0, non-commercial use only** |
+| Speech | [edge-tts](https://pypi.org/project/edge-tts/) (Microsoft Edge's online voices), with [pyttsx3](https://pypi.org/project/pyttsx3/) as the offline fallback | see each project |
+| Hindi text on screen | [HarfBuzz](https://github.com/harfbuzz/uharfbuzz) and [FreeType](https://pypi.org/project/freetype-py/) | see each project |
+
+This project's own code is released under the MIT licence (see [LICENSE](LICENSE)). The libraries and models it uses keep their own licences, which apply when you use or redistribute them, in particular Ultralytics YOLO (AGPL-3.0) and NLLB-200 (non-commercial only).
 
 ---
 
@@ -177,7 +219,5 @@ The project began with a structured review of 2024–2026 academic literature an
 
 ## Roadmap
 
-- The remaining reading tests, including handwriting
 - A demo video
-- Put diagnostic output behind a debug switch, and resolve the SPACE / I overlap
-- Later: voice commands, LLM scene descriptions, Hindi support
+- Architecture and design documentation
