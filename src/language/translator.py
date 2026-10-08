@@ -338,14 +338,45 @@ class HindiTranslator:
                     model = AutoModelForSeq2SeqLM.from_pretrained(MODEL)
 
                 model.eval()
+                hindi_id = tokenizer.convert_tokens_to_ids(TARGET_LANGUAGE)
+                print(f"  [translate] loaded in {time.time() - started:.1f} s")
+
+                # The first translation after loading is several times
+                # slower than the rest - 9.5 and 10.6 s against about 1 s,
+                # measured on 7 October - while the model sets itself up on
+                # its first run. One short translation here, still in the
+                # background, means the user's first Hindi answer does not
+                # pay that cost. It runs BEFORE the model is handed over
+                # below, so a real request waits for it instead of running
+                # alongside it.
+                self._warm_up(tokenizer, model, hindi_id)
+
                 self._tokenizer = tokenizer
                 self._model = model
-                self._hindi_id = tokenizer.convert_tokens_to_ids(TARGET_LANGUAGE)
+                self._hindi_id = hindi_id
                 print(f"  [translate] ready in {time.time() - started:.1f} s")
 
             except Exception as error:
                 print(f"  [translate] unavailable: {error}")
                 self.available = False
+
+    def _warm_up(self, tokenizer, model, hindi_id):
+        """Run one short translation so the first real one is fast.
+
+        A failure here is only printed: a slow first answer is better than
+        switching Hindi translation off.
+        """
+        try:
+            import torch
+
+            started = time.time()
+            with torch.no_grad():
+                inputs = tokenizer("Hello.", return_tensors="pt")
+                model.generate(**inputs, forced_bos_token_id=hindi_id,
+                               max_new_tokens=8)
+            print(f"  [translate] warmed up in {time.time() - started:.1f} s")
+        except Exception as error:
+            print(f"  [translate] warm-up skipped: {error}")
 
     def translate(self, english):
         """Translate English into Hindi. Returns None if that is not possible.

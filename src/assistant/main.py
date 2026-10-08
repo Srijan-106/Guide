@@ -317,10 +317,16 @@ hud = Hud()
 mode = MODE_AMBIENT
 language = STARTUP_LANGUAGE
 
-# Remembers the last thing spoken, so the user can ask to hear it again,
-# and when - so the on-screen caption can fade out afterwards
+# Remembers the last thing spoken, and when - so the on-screen caption
+# shows it and can fade out afterwards
 last_announcement = ""
 last_spoken_at = 0.0
+
+# The last thing spoken that was NOT ambient chatter - an answer, a
+# reading, a description, a mode change. "Repeat" replays this. On
+# 7 October "फिर से बोलो" straight after a description repeated "hat",
+# an ambient announcement made in between, instead of the description.
+last_message = ""
 
 # Set while a text reading is running on the background thread, so a
 # second reading cannot start on top of it
@@ -372,19 +378,41 @@ prominent_until = 0.0
 # ---------------------------------------------------------------------
 
 def say(text, priority=False, expires_in=None):
-    """Speak text and remember it, so the R key can repeat it.
+    """Speak text and remember it, so it can be shown and repeated.
 
     priority   - jumps ahead of queued ambient chatter and stops whatever
                  is playing. Used for anything the user asked for.
     expires_in - drop the announcement if it has not been spoken within
-                 this many seconds.
+                 this many seconds. Only ambient announcements expire, so
+                 this is also how they are told apart from everything else.
     """
-    global last_announcement, last_spoken_at
+    global last_announcement, last_spoken_at, last_message
     if not text or not text.strip():
         return
     last_announcement = text
     last_spoken_at = time.time()
+    if expires_in is None:
+        last_message = text            # not ambient chatter: repeatable
     speaker.speak(text, priority=priority, expires_in=expires_in)
+
+
+def repeat_last():
+    """Say again the last thing that was not ambient chatter.
+
+    Used by the R key and by "repeat" / "फिर से बोलो". If nothing but
+    ambient announcements has been said yet, the last of those is
+    repeated instead, so "what was that?" still gets an answer.
+    """
+    global last_announcement, last_spoken_at
+    text = last_message or last_announcement
+    if not text:
+        speaker.speak(t("nothing_to_repeat"), priority=True)
+        return
+
+    print(f"REPEATING: {text}")
+    last_announcement = text           # show it as the caption again
+    last_spoken_at = time.time()
+    speaker.speak(text, priority=True)
 
 
 def t(key, **values):
@@ -830,7 +858,7 @@ def track_objects(detected_now, announce):
 
 def run_command(name):
     """Run a command. Returns False if the application should stop."""
-    global mode, last_spoken_at
+    global mode
 
     if name == "read":
         if mode != MODE_READING:
@@ -845,12 +873,7 @@ def run_command(name):
         describe_scene()
 
     elif name == "repeat":
-        if last_announcement:
-            print(f"REPEATING: {last_announcement}")
-            last_spoken_at = time.time()          # show the caption again
-            speaker.speak(last_announcement, priority=True)
-        else:
-            speaker.speak(t("nothing_to_repeat"), priority=True)
+        repeat_last()
 
     elif name == "reading_mode":
         mode = MODE_READING
@@ -1120,14 +1143,9 @@ try:
         elif key == ord('i'):
             identify_and_read(frame)
 
-        # --- R = repeat last announcement ---
+        # --- R = repeat the last thing that was not ambient chatter ---
         elif key == ord('r'):
-            if last_announcement:
-                print(f"REPEATING: {last_announcement}")
-                last_spoken_at = time.time()      # show the caption again
-                speaker.speak(last_announcement, priority=True)
-            else:
-                speaker.speak(t("nothing_to_repeat"), priority=True)
+            repeat_last()
 
         # --- V = speak a command or a question ---
         elif key == ord('v'):
