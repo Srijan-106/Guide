@@ -82,7 +82,11 @@ From the project folder:
 
 ## Measured results
 
-86 tests, each fixed before testing began, recorded as it was run, and checked afterwards against the application's own log. Method and every correction: [docs/devlog.md](docs/devlog.md) (Days 9, 12 and 13).
+Two separate evaluations, **117 tests in total**. In both, the test list was fixed before any test was run, each result was recorded as it happened, and every row was afterwards checked against the application's own log. Method and every correction: [docs/devlog.md](docs/devlog.md) (Days 9, 12, 13 and 15).
+
+### 1. The feature evaluation — 86 tests
+
+A list of ten objects, eight texts, fourteen voice commands and twelve questions, fixed on Day 9 and Day 12. Three of the ten objects were deliberately chosen as known weak cases.
 
 | Feature | Success | Notes |
 |---|---|---|
@@ -96,9 +100,27 @@ From the project folder:
 | Hindi translation | 3/4 | "yellow case" became "yellow bag" |
 | **Trap questions** (asking about things that are not there) | **4/4 passed, 0 made up** | no cup, no dog, no watch: each answered "there is none" |
 
-**Object detection is reliable for common objects and blind to items outside the model's vocabulary.** Every failure was silence, never a wrong object name, which is the safer failure for a user who cannot check. The app reads the text on such items instead, which for a product is usually the more useful half.
+The last row matters most: a confident wrong answer cannot be checked by someone who cannot see. On the chosen object list, every detection failure was **silence, never a wrong name** — the safer failure. The app reads the text on such items instead, which for a product is usually the more useful half.
 
-**What these numbers do not show:** one attempt per test, one speaker, one room, one front-facing laptop webcam. 100% on 7 or 8 tests is promising, not proof. Handwriting is largely not read. The 86 results describe the application before the fixes made on Day 13; each of those fixes was checked separately.
+### 2. The room sweep — 31 objects
+
+The first evaluation asks *"of these ten chosen objects, how many does it name?"*. This one asks a different question: *"of the objects actually in a room, how many does it name?"* Every object visible in one room was written down **before the application was started**, then shown in that order.
+
+| | Result |
+|---|---|
+| Named correctly | **21/31 = 67.7%** |
+| Said nothing | 7 |
+| Gave the wrong name | 3 |
+
+**Not named:** wired earbuds, key, speaker, door, clothes, a miniature bike, a phone charger.
+
+**Named wrongly,** and all three are near misses rather than nonsense: a cat doll → "teddy bear", a calculator → "cell phone", a spray bottle → "bottle" (true, but not specific enough to identify it).
+
+**Three objects were announced but not heard.** A hanger, a cap and a power socket were recorded as misses, and the log showed the application had named all three: the announcements arrived merged into a sentence with other objects and went past unnoticed. The rows were corrected, with the log evidence written into each, and the problem is recorded as a limitation.
+
+### What these numbers do not show
+
+One attempt per test, one speaker, one room, one front-facing laptop webcam, one lighting condition for the sweep. 100% on 7 or 8 tests is promising, not proof. Handwriting is largely not read. The 86 results describe the application **before** the fixes made on Day 13; each of those fixes was checked separately afterwards.
 
 ## Evaluation highlights
 
@@ -108,7 +130,7 @@ From the project folder:
 
 | Model | Result |
 |---|---|
-| YOLO26, COCO (80 classes) | Pen detected as "toothbrush"; no glasses, pillows or slippers |
+| YOLO26, COCO (80 classes) | Pen detected as "toothbrush"; no glasses, pillows or slippers. (With Objects365 the pen **is** detected — see the room sweep) |
 | YOLOv8, Open Images (600 classes) | Rejected: announced "Man", "Person" and "Human face" for one person |
 | **YOLO26, Objects365 (365 classes)** | **Chosen:** glasses (0.91), bracelet (0.76), pillow, slippers; one label per object |
 
@@ -133,13 +155,14 @@ From the project folder:
 ## Known limitations
 
 - **Speech needs internet for the natural voice.** Without it, the Windows voice is used, which sounds noticeably more robotic.
-- **Many specific products are not recognised.** Cream tubes and spray bottles are not among the model's 365 classes; the pen is a class but is rarely detected. The app reads their text instead.
+- **Some objects are never named, and a few are named wrongly.** Cream tubes are not among the model's 365 classes. A spray bottle is named only "bottle". In the room sweep, a key, a speaker, a door, clothes, a phone charger and wired earbuds were not named at all, and a calculator was called a "cell phone". Where an object has text on it, the app reads that instead, which for a product is usually the more useful half.
 - **Handwriting is largely not read.** Neat handwriting only in good light.
 - **A misheard question gets a confident answer to a different question.**
+- **An announcement can be spoken and still missed.** Objects appearing together are merged into one sentence, and a name can go past unnoticed. Three objects in the room sweep were recorded as misses until the log showed they had been announced.
 - **Hindi speech recognition is weaker than English.**
 - **Visual questions need an 8 GB GPU**, and the model can state details it is unsure of, so answers are spoken as "It looks like …".
 - **Identification picks the smallest box covering the centre**, so a box drawn inside a held object can win.
-- **Objects at the edge of the frame can flicker** and be announced again.
+- **Objects at the edge of the frame flicker and are re-announced.** In one 25-minute session the log shows a bracelet announced 18 times, a nightstand 14, a hat 13 and a shelf 12, despite a 30-second cooldown per object.
 - **Printed faces** on posters or photographs can be announced as "person".
 - Tested on one machine, running Windows 11 with a front-facing laptop webcam.
 
@@ -162,8 +185,8 @@ From the project folder:
     │   │   ├── hud.py               captions, status, key strip, detection boxes
     │   │   └── shaping.py           Hindi text shaping (HarfBuzz)
     │   ├── bidi/                    stand-in for python-bidi (see its docstring)
-    │   └── evaluation/              test recorder, analysis, correction and check scripts
-    ├── evaluation/results.csv       recorded test results
+    │   └── evaluation/              test recorders, analysis, correction and check scripts
+    ├── evaluation/                 recorded test results, and the fixed test lists
     ├── models/                      the detection model
     ├── archive/                     earlier standalone scripts, kept for reference
     ├── docs/                        development log, setup guides, images
@@ -192,6 +215,7 @@ The files in `archive/` were superseded by the application. They are kept becaus
 - **Day 12** — Checked GPU memory and speed; finished the Day 9 tests, with every result checked against the app's log; wrote the test plan for the new features before testing.
 - **Day 13** — Tested voice, vision and Hindi features (86 tests in total, 4/4 trap questions passed); rebuilt the Hindi glossary; fixed the slow first answer, lost speech on network failure, dropped announcements, Hindi command recognition and the spell checker.
 - **Day 14** — Repeat replays the last real message; Hindi model warm-up; one-line setup for other machines; the codebase read against its records; repository history cleaned (234 MB → 45.5 MB).
+- **Day 15** — A second evaluation: 31 objects listed before the application was started, then shown in order — 67.7% named. Documentation: architecture, product requirements, design system and contributing guide.
 
 Full day-by-day record: [docs/devlog.md](docs/devlog.md)
 
