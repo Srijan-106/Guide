@@ -1576,3 +1576,155 @@ commit. The repository shrank from **234 MB to 45.5 MB**.
 
 **Next goal:** Day 15 — the README, then the architecture and design documents,
 and finally the demo video.
+
+---
+
+## Day 15 — [9 oct]
+
+**Goal:** Write the project's documentation from the code, then test the one
+thing the first evaluation could not answer: how much of a real room the
+application can name.
+
+### 1. Documentation written from the code
+
+Everything was written by reading the current source, not from memory of what
+was built. Where a document and the code disagreed, the code won and the
+disagreement was recorded rather than quietly resolved.
+
+| Written | What it holds |
+|---|---|
+| Day guides, Days 10–14 | One document per day: what was done, every problem, its fix and the reasoning |
+| This log, Days 10–14 | The same, in short form, with two dated notes added to Days 7 and 9 rather than rewriting them |
+| `README.md` | Rewritten: current features, the one-line install, both evaluations, measured performance, licences |
+| `docs/ARCHITECTURE.md` | Components, threads, the five end-to-end flows, the models, fifteen decisions with their reasons, the internal rules, every setting |
+| `docs/PRD.md` | The problem, who it is for, features built and not built, constraints |
+| `docs/DESIGN_SYSTEM.md` | The voice first — honesty rules, what is said when nothing happened, queue behaviour, Hindi — then the display |
+| `CONTRIBUTING.md` | Where new code belongs, what must not break, when to stop and ask, how to check the work |
+
+**The architecture document records where the code and the records disagree**,
+rather than hiding it. The clearest case: a commit on 5 October mentions a
+transcription lock, but no committed version of `listener.py` contains one, so
+two Whisper transcriptions can still run at once if V is pressed again while
+one is working. It is written up as an open issue, not fixed, because the
+documentation stage changes nothing in the code.
+
+### 2. A second evaluation: the room sweep
+
+**The question the first evaluation could not answer.** Day 9 fixed a list of
+ten objects and asked "how many of these does it name?". Three of the ten were
+deliberately chosen as known weak cases, so 56.7% is partly a measure of that
+choice. It does not say how much of a real room the application can name.
+
+**Method, with the honesty built in.** Every object visible in one room was
+written into `evaluation/room_sweep_plan.csv` **before the application was
+started**, and the list could not be added to afterwards. Choosing objects
+while testing — even without meaning to — means choosing the ones that work,
+and the number would then measure the chooser. 31 objects were listed,
+including a spray bottle and a pen, both known weak cases, because skipping
+them is exactly what makes a number meaningless.
+
+Two rules were also fixed in advance: fixed objects such as the door and the
+power socket are tested by pointing the camera at them; and a fair generic name
+counts as correct, so "car" for a toy car is right.
+
+Two new scripts: `record_room_sweep.py` presents each object in the fixed order
+and records **what the application actually said** alongside the verdict;
+`analyse_room_sweep.py` reports the result and prints the Day 9 number beside
+it.
+
+### 3. Results — 31 objects
+
+| | Result |
+|---|---|
+| Named correctly | **21/31 = 67.7%** |
+| Said nothing | 7 |
+| Gave the wrong name | 3 |
+
+**Not named:** wired earbuds, a key, a speaker, a door, clothes, a miniature
+bike, a phone charger.
+
+**Named wrongly**, and all three are near misses inside a sensible category
+rather than nonsense: a cat doll → "teddy bear", a calculator → "cell phone",
+a spray bottle → "bottle".
+
+**Two measurements, not a before and after.** 56.7% on a list that deliberately
+included known failures; 67.7% across the objects in one room. Both are
+reported, each with the question it answers.
+
+### 4. Checking the rows against the log
+
+As on Days 12 and 13, every recorded row was compared with the application's
+own terminal log, and three did not match.
+
+> **⚠ The announcement was made, and the tester did not hear it.**
+> A hanger, a cap and a power socket were recorded as misses. The log shows
+> `ANNOUNCING: hanger`, `ANNOUNCING: power outlet`, and `hat` — the
+> vocabulary's name for a cap — announced thirteen times. All three were
+> detected, named and spoken.
+
+**Why they were missed:** the announcements arrived merged into one sentence
+with other objects, and the tester was reading the recorder's terminal rather
+than listening. This is the sibling of the Day 12 finding that *a box on
+screen does not mean it was spoken*: **spoken does not mean heard**. It is
+recorded as a limitation, because a real user has the same problem — a name
+inside a merged sentence can go past unnoticed.
+
+Corrections are in `src/evaluation/correct_room_sweep_2026_10_09.py`, each with
+its reason written into the row, and the untouched original is kept as
+`evaluation/room_sweep_before_2026-10-09_corrections.csv`.
+
+Two rows were left as failures although a case could be made for them, because
+the evidence does not settle it:
+
+| Row | Kept as | Why |
+|---|---|---|
+| spray bottle → "bottle" | wrong name | True, but not specific enough to identify the object. "Green bottle" was counted correct because a green bottle *is* a bottle |
+| miniature bike → nothing | nothing | The log announces "toy" three times, but the Hot Wheels cars were also announced as "toy", and the log has no timestamps. Unverifiable, so the harsher verdict stands |
+
+### 5. What the log also showed
+
+**The pen claim in the README was wrong, and now there is proof.** `pen/pencil`
+was announced three times in this session. It is in the Objects365 vocabulary;
+it is simply rarely detected at the 0.65 threshold. The README and the model
+comparison table were corrected.
+
+**The flicker problem has numbers now.** Day 12 recorded that background
+objects at the edge of the frame are announced repeatedly. In this single
+session of about 25 minutes, despite a 30-second cooldown for each object, the
+log shows:
+
+| Object | Times announced |
+|---|---|
+| bracelet | 18 |
+| nightstand | 14 |
+| hat | 13 |
+| cabinet/shelf | 12 |
+| head phone | 11 |
+
+### 6. Repository readiness
+
+Checked before making the repository public: images, local paths, secrets,
+model files, ignored files, and the author address in the commits. The commits
+use GitHub's private no-reply address, so no personal email is exposed. The
+screenshots in `docs/images` show the developer's room; they were kept
+deliberately, because they are the evidence for the Day 4 comparison. The
+licences of the models used — Ultralytics YOLO (AGPL-3.0) and NLLB-200
+(CC-BY-NC 4.0, non-commercial) — were added to the README, alongside this
+project's own MIT licence.
+
+### What was learned
+
+- Write the documentation from the code, not from memory: a commit title
+  promised a lock the code never contained
+- A measurement answers one question. A second question needs a second
+  measurement, not a replacement for the first
+- Fixing the list before the application starts is what stops a test measuring
+  the person running it
+- Report both numbers with the question each answers; one number replacing
+  another looks like a fix even when it is not
+- Where the evidence does not settle a verdict, keep the harsher one
+- Speaking is not the same as being heard: an announcement can be correct,
+  on time, and still missed
+
+**Next goal:** Day 16 — turn the diagnostic output off, record the demo video,
+and make the repository public.
