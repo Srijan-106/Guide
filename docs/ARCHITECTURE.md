@@ -58,7 +58,7 @@ How to read it:
 | `src/display/shaping.py` | `ShapedFont`: shapes Devanagari with HarfBuzz and draws it with FreeType when Pillow lacks Raqm | Text, font file | An RGBA image of the text | uharfbuzz, freetype-py |
 | `src/bidi/__init__.py` | A stand-in for `python-bidi`, which EasyOCR imports; returns text unchanged | Text | The same text | — |
 | `setup.py` | One-command install: checks, `.venv`, packages, OpenCV repair, verification, model downloads, report | Command-line options | An installed environment | pip, the app's modules (for model names) |
-| `src/evaluation/` | Manual evaluation: `record_results.py` (fixed test list), `analyse_results.py`, two dated correction scripts, `check_glossary.py`, `check_spelling.py` | Tester's verdicts; app modules | `evaluation/results.csv`, reports | The app's modules |
+| `src/evaluation/` | Manual evaluation, two sets: `record_results.py` / `analyse_results.py` for the 86-test feature evaluation, and `record_room_sweep.py` / `analyse_room_sweep.py` for the 31-object room sweep; three dated correction scripts; `check_glossary.py` and `check_spelling.py` | Tester's verdicts; app modules | `evaluation/results.csv`, `evaluation/room_sweep.csv`, reports | The app's modules |
 | `archive/` | **Legacy.** Earlier standalone scripts (detection, Tesseract and EasyOCR, voice and translation tests), kept because the devlog refers to them. Not run by the app; `archive/detection/detect.py` loads a model no longer in the repository | — | — | — |
 
 ---
@@ -280,7 +280,7 @@ the code actually does.
 | First visual question after starting | 6.2 s | Day 13 |
 | Whisper transcription | 0.4–1.1 s (English), 0.8–2.5 s (Hindi) | Day 13 |
 | NLLB translation | 1.2–1.9 s per sentence on the CPU; the first one after loading was 9.5–10.6 s before the warm-up was added | Days 11, 14 |
-| Evaluation | 86 tests; results in the README and devlog Day 13 | `evaluation/results.csv` |
+| Evaluation | 117 tests across two evaluations: 86 on a fixed feature list, 31 on the objects in one room | `evaluation/results.csv`, `evaluation/room_sweep.csv` |
 
 ---
 

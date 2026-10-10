@@ -99,9 +99,14 @@ are the checks:
 | The spelling rules | `python src\evaluation\check_spelling.py` — all 22 cases must pass |
 | Anything else | Run the app and exercise the feature **by key and by voice**, in English and in Hindi |
 
-For a change to a model or a threshold, re-record the affected tests with
-`python src\evaluation\record_results.py` and re-run
-`python src\evaluation\analyse_results.py`.
+For a change to a model or a threshold, re-record the affected tests and
+re-analyse them. There are two evaluations, each with its own pair of scripts
+and its own results file:
+
+| Evaluation | Record | Analyse | Results |
+|---|---|---|---|
+| The 86-test feature evaluation | `record_results.py` | `analyse_results.py` | `evaluation/results.csv` |
+| The 31-object room sweep | `record_room_sweep.py` | `analyse_room_sweep.py` | `evaluation/room_sweep.csv` |
 
 **Recording results:** fix the test list before testing. Record each verdict as
 it happens. Afterwards, check every row against the application's own terminal

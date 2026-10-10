@@ -58,9 +58,13 @@ about obstacles, steps or traffic, and it must not be relied on for safety.
 
 ## Measured results
 
-86 tests, fixed before testing began and checked against the application's own
-log. Full numbers and caveats: [README](../README.md#measured-results) and
-[devlog.md](devlog.md) (Days 9, 12 and 13).
+**117 tests across two evaluations.** In both, the list was fixed before any
+test was run, and every row was afterwards checked against the application's
+own log. Full numbers and caveats: [README](../README.md#measured-results) and
+[devlog.md](devlog.md) (Days 9, 12, 13 and 15).
+
+**The feature evaluation — 86 tests,** on a list of ten objects that
+deliberately included three known weak cases:
 
 | Feature | Result |
 |---|---|
@@ -74,6 +78,18 @@ log. Full numbers and caveats: [README](../README.md#measured-results) and
 
 The last row is the one that matters most for this user: a confident wrong
 answer cannot be checked by someone who cannot see.
+
+**The room sweep — 31 objects,** asking a different question: of the objects
+actually in a room, listed before the application was started, how many does it
+name?
+
+| | Result |
+|---|---|
+| Named correctly | **21/31 = 67.7%** |
+| Said nothing | 7 |
+| Gave the wrong name | 3 |
+
+Two measurements, not a before and after. Neither replaces the other.
 
 ## Constraints
 

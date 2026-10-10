@@ -168,9 +168,25 @@ One attempt per test, one speaker, one room, one front-facing laptop webcam, one
 
 ---
 
+## Documentation
+
+| Document | What it holds |
+|---|---|
+| [docs/devlog.md](docs/devlog.md) | The day-by-day record: what was built, every problem, its fix and the reasoning behind it |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the system is built: components, threads, data flows, the models, and every decision with its reason |
+| [docs/PRD.md](docs/PRD.md) | The problem, who it is for, what is built and what is not, and the constraints |
+| [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | How the application speaks — the honesty rules come first — and how the screen is drawn |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Where new code belongs, what must not break, when to stop and ask |
+| [docs/setup.md](docs/setup.md) | Installing it, and the measured minimum requirements |
+| [docs/gpu-setup.md](docs/gpu-setup.md) | Troubleshooting: RTX 50-series, Windows Smart App Control |
+
+---
+
 ## Project structure
 
     Guide/
+    ├── README.md                    this file
+    ├── CONTRIBUTING.md              rules for changing the project
     ├── setup.py                     one-command installer
     ├── src/
     │   ├── assistant/main.py        the application: camera, modes, keys, commands
@@ -186,10 +202,11 @@ One attempt per test, one speaker, one room, one front-facing laptop webcam, one
     │   │   └── shaping.py           Hindi text shaping (HarfBuzz)
     │   ├── bidi/                    stand-in for python-bidi (see its docstring)
     │   └── evaluation/              test recorders, analysis, correction and check scripts
-    ├── evaluation/                 recorded test results, and the fixed test lists
+    ├── evaluation/                  recorded test results, and the fixed test lists
     ├── models/                      the detection model
     ├── archive/                     earlier standalone scripts, kept for reference
-    ├── docs/                        development log, setup guides, images
+    ├── docs/                        devlog, architecture, requirements,
+    │                                design system, setup guides, images
     └── requirements.txt
 
 The files in `archive/` were superseded by the application. They are kept because the development log describes how they were built.
@@ -240,8 +257,3 @@ This project's own code is released under the MIT licence (see [LICENSE](LICENSE
 ## Research foundation
 
 The project began with a structured review of 2024–2026 academic literature and existing open-source and commercial assistive systems, to identify genuine gaps rather than assume novelty. This project does not claim novelty; its aim is a working system that is honestly evaluated and fully understood.
-
-## Roadmap
-
-- A demo video
-- Architecture and design documentation
