@@ -127,7 +127,7 @@ VOICES = {
 # Every detection, with the reason it was kept or skipped, and every OCR
 # word with its confidence. Invaluable while developing, distracting in
 # a demonstration - set to False before recording one.
-DEBUG = False
+DEBUG = True
 
 # --- Detection thresholds -------------------------------------------
 
