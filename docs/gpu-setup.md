@@ -59,12 +59,16 @@ Smart App Control blocks are **not** shown in Windows Security's Protection hist
 
 **What was blocked, and the fix:**
 
-| Blocked file | Fix that worked |
-|---|---|
-| PyTorch nightly (`torch\_C.cp313-win_amd64.pyd`) | Switch to stable `2.11.0+cu128` |
-| scipy 1.18.1 (`_ufuncs_cxx`) | Install scipy 1.17 |
+| Blocked file | When | Fix that worked |
+|---|---|---|
+| PyTorch nightly (`torch\_C.cp313-win_amd64.pyd`) | Day 7 | Switch to stable `2.11.0+cu128` |
+| scipy 1.18.1 (`_ufuncs_cxx`) | Day 7 | Install scipy 1.17 |
+| `python-bidi` 0.6, a Rust rewrite shipping a compiled binary. EasyOCR imports it at startup, so the whole application failed to start | Day 10 | Replaced by a documented stand-in in `src/bidi/` |
+| `llvmlite`, installed with Whisper through `numba` | Day 10 | **Smart App Control turned off** |
 
 Smart App Control judges files partly on reputation, so widely-used releases are more likely to pass than rare or brand-new ones. It has no exception list - individual files cannot be allowed.
+
+**Current state of this project's machine: Smart App Control is OFF.** It was turned off on Day 10, after the llvmlite block, because there was no per-file way round it. This is reversible on this Windows build - see below.
 
 If blocks keep recurring, turning Smart App Control off is the usual resolution for Python development. On Windows 11 build 26100.8116 / 26200.8116 or later this is reversible; on earlier builds it is permanent without resetting Windows. Check your build with `winver` before deciding. ([source](https://www.computerworld.com/article/4043925/windows-11-smart-app-control-explained.html))
 
@@ -81,18 +85,30 @@ If blocks keep recurring, turning Smart App Control off is the usual resolution 
 | torchvision | 0.26.0+cu128 |
 | scipy | 1.17 |
 | Python | 3.13 |
-| OS | Windows 11, build 26200.9445, Smart App Control On |
+| OS | Windows 11, build 26200.9445, Smart App Control **off** (turned off on Day 10) |
 
 ## Measured performance
+
+Measured on Day 7, with detection and text reading only:
 
 | Metric | Value |
 |---|---|
 | YOLO inference | ~4-5 ms per frame |
 | End-to-end detection loop | 30-50 FPS |
-| GPU memory used by the application | ~300 MB |
+| GPU memory used | ~300 MB |
 | GPU utilisation during detection | ~9% |
 
 CPU-only inference measured 130-165 ms per frame - roughly 30x slower.
+
+**The application has grown since.** Measured again on Day 12, with everything loaded:
+
+| Metric | Value |
+|---|---|
+| GPU memory, detection + text reading + speech recognition | ~3.3 GB |
+| GPU memory with visual questions as well | 7,734 of 8,151 MiB |
+| Visual question, with the application running | 3-5 s to the start of the answer |
+
+So the core features need about 4 GB of GPU memory, and visual questions need 8 GB. See [setup.md](setup.md) for the full requirements.
 
 ---
 
