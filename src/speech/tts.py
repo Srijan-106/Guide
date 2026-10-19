@@ -1,5 +1,5 @@
 """
-Text-to-speech module for VisionAssist.
+Text-to-speech module for Guide.
 
 Primary engine: edge-tts (Microsoft Edge's online voices), played through
 pygame. This replaced pyttsx3, which failed five separate times on Windows

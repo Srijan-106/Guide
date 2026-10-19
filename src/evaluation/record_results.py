@@ -1,5 +1,5 @@
 """
-Record evaluation results for VisionAssist, one test at a time.
+Record evaluation results for Guide, one test at a time.
 
 The application needs the camera, so this runs as a separate program in
 a second terminal: the app in one window, this in the other. It shows

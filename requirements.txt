@@ -1,4 +1,4 @@
-# VisionAssist - Python dependencies
+# Guide - Python dependencies
 #
 # Easiest install:
 #

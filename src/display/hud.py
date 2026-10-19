@@ -1,5 +1,5 @@
 """
-On-screen display for VisionAssist.
+On-screen display for Guide.
 
 WHO THIS IS FOR: not the blind user, who cannot see it, but the sighted
 people around them - a helper, a tester, someone watching a demo. Their
@@ -426,7 +426,7 @@ class Hud:
         width = frame.shape[1]
         self._strip(frame, 0, TOP_STRIP_HEIGHT)
 
-        title = self._text("VisionAssist", "title", PAPER)
+        title = self._text("Guide", "title", PAPER)
         self._blit(frame, title, MARGIN, (TOP_STRIP_HEIGHT - title.shape[0]) // 2)
 
         x = MARGIN + title.shape[1] + 20

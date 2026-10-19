@@ -1,6 +1,6 @@
 # Development Log
 
-This file tracks daily progress on the Guide (VisionAssist) project.
+This file tracks daily progress on the Guide project.
 Each entry corresponds to a handwritten diary entry, expanded here in digital form.
 
 Where a later day showed an earlier entry to be wrong, the original text is

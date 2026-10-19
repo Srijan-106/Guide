@@ -1,5 +1,5 @@
 """
-VisionAssist - main application.
+Guide - main application.
 
 Two modes, switched with the M key or by voice:
 
@@ -236,8 +236,8 @@ ONLINE_RETRY_INTERVAL = 60.0
 CAMERA_WIDTH = 1280
 CAMERA_HEIGHT = 720
 
-MODE_AMBIENT = "ambient"
-MODE_READING = "reading"
+MODE_AMBIENT = "Ambient"
+MODE_READING = "Reading"
 
 
 # ---------------------------------------------------------------------
@@ -1106,7 +1106,7 @@ try:
                  statuses=statuses, caption=last_announcement,
                  caption_age=time.time() - last_spoken_at, keys=keys)
 
-        cv2.imshow("VisionAssist", annotated_frame)
+        cv2.imshow("Guide", annotated_frame)
 
         # Commands recognised from speech are run here, on the main loop,
         # because they use the camera frame and change the mode

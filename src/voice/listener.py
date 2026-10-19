@@ -1,5 +1,5 @@
 """
-Voice commands for VisionAssist, using OpenAI Whisper locally.
+Voice commands for Guide, using OpenAI Whisper locally.
 
 Whisper runs on the GPU, offline and free, and understands both English
 and Hindi. Push-to-talk: V starts recording and V again stops it, so

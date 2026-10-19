@@ -1,5 +1,5 @@
 """
-One-command setup for VisionAssist.
+One-command setup for Guide.
 
 From a fresh clone, the whole install is one line (Windows PowerShell):
 
@@ -477,7 +477,7 @@ def report(status):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Set up VisionAssist.")
+    parser = argparse.ArgumentParser(description="Set up Guide.")
     parser.add_argument("--check", action="store_true",
                         help="check the system without installing anything")
     parser.add_argument("--cpu", action="store_true",

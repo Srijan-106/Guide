@@ -1,4 +1,4 @@
-# VisionAssist — Architecture
+# Guide — Architecture
 
 How the application is built, why it is built that way, and the rules that keep
 it working. Written for a developer seeing the project for the first time, or
@@ -23,7 +23,7 @@ held-up object, takes spoken commands, and answers open questions about what
 the camera sees, in English or Hindi. A video window shows the camera with
 captions of everything spoken, for the sighted people around the user.
 
-![How VisionAssist works](images/architecture.png)
+![How Guide works](images/architecture.png)
 
 How to read it:
 

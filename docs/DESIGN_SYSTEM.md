@@ -1,4 +1,4 @@
-# VisionAssist — Design System
+# Guide — Design System
 
 **The interface is speech.** The user cannot see the screen, so everything the
 application knows it must say, and how it says it is the whole design. The

@@ -1,4 +1,4 @@
-# VisionAssist — Product Requirements
+# Guide — Product Requirements
 
 What this project is for, what it does today, and what it cannot do. Kept
 short: the reasoning is in [devlog.md](devlog.md), the build is in

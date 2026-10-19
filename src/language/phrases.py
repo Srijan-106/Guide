@@ -1,5 +1,5 @@
 """
-Everything VisionAssist says, in English and Hindi.
+Everything Guide says, in English and Hindi.
 
 Keeping every spoken phrase here, rather than scattered through the code,
 means a language can be added by translating one file - and a phrase

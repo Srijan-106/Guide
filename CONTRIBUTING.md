@@ -1,4 +1,4 @@
-# Contributing to VisionAssist
+# Contributing to Guide
 
 Rules for changing this project. They exist because most of them were learned
 the hard way: each one has a day in [docs/devlog.md](docs/devlog.md) behind it.

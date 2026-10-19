@@ -1,6 +1,6 @@
 # GPU Setup Notes
 
-VisionAssist uses YOLO (via Ultralytics) and EasyOCR, both of which run significantly faster on an NVIDIA GPU. Neither strictly requires one - both fall back to CPU - but inference is roughly 30x slower without.
+Guide uses YOLO (via Ultralytics) and EasyOCR, both of which run significantly faster on an NVIDIA GPU. Neither strictly requires one - both fall back to CPU - but inference is roughly 30x slower without.
 
 ---
 
