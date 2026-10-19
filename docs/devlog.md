@@ -1728,3 +1728,132 @@ project's own MIT licence.
 
 **Next goal:** Day 16 — turn the diagnostic output off, record the demo video,
 and make the repository public.
+
+---
+
+## Day 16 — [16–19 oct]
+
+**Goal:** Check everything once more before recording the demo video, then
+prepare the recording.
+
+### 1. The final check before the demo
+
+On 16 October the whole project was checked again, from a fresh copy of the
+folder: every Python file parses; all 34 spoken phrases exist in both
+languages; the glossary's 109 pairs have no duplicates and no upper-case
+entries; both analysis scripts reproduce their results (17/30 and 21/31); the
+spelling check passes 22/22; every link and every table in every document is
+valid; and the numbers agree across the README, the PRD and the architecture
+document.
+
+It found two problems:
+
+| Found | Fixed |
+|---|---|
+| `DEBUG = True` in `main.py` | A commit on 10 October is titled "Turn diagnostic output off for the demo", but the switch was `True` in the current file. Set to `False` and committed |
+| `docs/gpu-setup.md` out of date | It still said Smart App Control was on (it has been off since Day 10), gave the Day 7 GPU memory figure as current, and its table of blocked files did not list `python-bidi` or `llvmlite`. Corrected |
+
+The `DEBUG` switch is the same lesson as the Whisper lock on Day 15: a commit
+title says what was meant, and only the file says what is there.
+
+### 2. The online voice was refused
+
+On 19 October, in a practice run, every sentence sent to the online voice
+failed:
+
+```
+[speech error] 403, message='Invalid response status', url='wss://speech.platform.bing.com/...&Sec-MS-GEC-Version=1-143.0.3650.75'
+[speech] online voice failed - saying it with the offline voice
+[speech] switching to the offline voice
+```
+
+> **⚠ The voice service refused the requests. Nothing on this machine had changed.**
+> `403` means the server received the request and turned it down. The network
+> was fine: a direct request to the same server was answered (HTTP 400, a
+> reply, not a timeout). edge-tts is not an official, documented Microsoft
+> API. It uses the service behind Microsoft Edge's Read Aloud feature, and
+> every request carries a security token (`Sec-MS-GEC`) calculated the way
+> Edge calculates it. Microsoft changed that calculation, which was reported
+> upstream as a move to a version 2 token, and edge-tts 7.2.8 still sent the
+> old one. The error itself shows it: `Sec-MS-GEC-Version=1-143...`.
+
+**What the application did is what Days 5A and 8 built it to do.** The first
+failed sentence was spoken again with the Windows voice; after the second,
+speech switched to offline mode, shown on screen as "Offline voice"; after 60
+seconds it tried the online voice again, was refused again, and went back
+offline. The user was never left without speech. This time the failure came
+from the service itself rather than from the network, and the fallback handled
+it the same way.
+
+> **⚠ One thing it got wrong: "Back online" before it was back.**
+> When the retry started, the application said "Back online" before any
+> sentence had gone through. `try_online_again()` in `tts.py` switches back to
+> online mode first and finds out afterwards, and the main loop announces the
+> switch as soon as it sees it. So the user heard "Back online", in the Windows
+> voice, because that very sentence was refused, while the online voice was
+> still failing. A message that is false is worse than no message. Recorded as
+> an open issue and not changed before the demo: the announcement should wait
+> until a sentence has actually been spoken online.
+
+**Fix:** upgraded edge-tts from 7.2.8 to 7.3.1. Checked first with the
+edge-tts command line (a test sentence written to a file, no error), then with
+a full session of the application: no speech errors at all. The pin in
+`requirements.txt` was changed, with the reason written beside it.
+
+**Why pinning did not prevent this.** Pinning makes an install repeatable. It
+cannot stop the service at the other end from changing, and the pinned version
+was exactly the one that broke. The README's limitation about the natural voice
+now says that it depends on a service this project does not control.
+
+### 3. Preparing the recording
+
+With wired earphones, the application's voice never reaches the microphone, so
+the recorder has to capture two sources: the system audio, which carries the
+application's speech, and the microphone, which carries the narration. OBS
+Studio was set up to record both.
+
+The video is encoded on the CPU (x264) rather than by the GPU's encoder,
+because with everything loaded the GPU has only about 400 MB of its 8 GB free
+(Day 12). With OBS running, `ollama ps` still showed the vision model at
+`100% GPU`, so recording takes no memory away from the application.
+
+### 4. What the practice run showed
+
+A practice session, not an evaluation, and not counted in either result.
+
+| Heard | Answer | Note |
+|---|---|---|
+| "What am I wearing." | "You are wearing glasses and a red and brown shirt with a circular design on the chest." | 1.6 s with the model already loaded |
+| "Colour of my earphone." | "Your earphones are white." | A narrow question gets a short answer |
+| "Colour of my hat." | "You are wearing no hat; the hat you see on the wall is brown." | It corrected the question instead of going along with it |
+| "मेरे ब्रेज्लेट का तलवड क्या है।" | A description of everything in view | The question was misheard, then the answer was mistranslated (below) |
+| "Am I polite, what a good." | "You are not visible as a blind person, so you cannot be polite or good." | Misheard, and answered confidently anyway |
+| "Am I boy or a girl." | "You are a boy." | Judged from appearance. Not what the application is for |
+
+> **⚠ The translation moved the bracelet.**
+> The English answer said "a bracelet on your right **wrist**". The Hindi said
+> "आपके दाहिने **कंधे** पर ब्रेसलेट है": on your right **shoulder**. The
+> English was printed in the terminal; the user hears only the Hindi, and has
+> no way to know that a detail changed. It is the same kind of error as the
+> evaluation's "yellow case" becoming "yellow bag", and it is now written up in
+> the README as a limitation.
+
+**Kept out of the demo:** the appearance-based question, and open or unclear
+questions, which produce the worst answers. **Kept in:** narrow questions, and
+the question about something that is not there.
+
+### What was learned
+
+- A commit title says what was meant; only the file says what is there
+- A pinned version makes an install repeatable, not permanent: the service at
+  the other end can still change
+- A fallback is proven only when something real breaks. This time it did, and
+  the user kept hearing speech
+- A status message has to be true when it is spoken: "Back online" was said
+  before anything had worked
+- Narrow questions get short, fast answers; open or misheard ones get long
+  answers, or confident nonsense
+- A translation error is silent: the English answer was right, and the Hindi
+  one moved the bracelet
+
+**Next goal:** record the demo video, and make the repository public.
