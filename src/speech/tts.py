@@ -21,6 +21,9 @@ the internet blinked at that moment and the old code only fell back after
 a second failure. A dead network also counts as a failure after
 ONLINE_TIMEOUT_SECONDS, instead of hanging.
 
+Long text is spoken in pieces: see MAX_PIECE_CHARACTERS. If a piece fails
+partway through, the offline voice says only the part not yet heard.
+
 Queue behaviour:
   priority   - an announcement the user asked for jumps ahead of queued
                ambient chatter and stops whatever is playing
@@ -37,6 +40,7 @@ Queue behaviour:
 
 import asyncio
 import os
+import re
 import tempfile
 import threading
 import time
@@ -54,6 +58,69 @@ import pyttsx3
 # about a second; on a slow connection, 5 s may occasionally trip early,
 # which costs one announcement in the less natural Windows voice.
 ONLINE_TIMEOUT_SECONDS = 5
+
+# The longest piece of text sent to the online voice in one request.
+# The app waits for the COMPLETE audio of a request before playing it, and
+# ONLINE_TIMEOUT_SECONDS applies to each request - so a long text could
+# never be spoken online. Short announcements and two-sentence answers (up
+# to about 230 characters) arrived within the limit. On 20 October a
+# reading from a phone screen, about 550 characters, did not: it timed out
+# and was read by the Windows voice instead. Longer text is therefore split
+# at sentence and phrase breaks and spoken piece by piece. Each piece
+# arrives well within the limit, and the first words are heard sooner. The
+# cost is a short pause, while the next piece is fetched, between pieces.
+MAX_PIECE_CHARACTERS = 200
+
+# Where a long text may be split, best first: after the end of a sentence
+# (including the Hindi full stop ।), after a comma, colon or semicolon -
+# which is also how the lines of a reading are joined - and at a space.
+_BREAKS = (r"(?<=[.!?।])\s+", r"(?<=[,;:])\s+", r"\s+")
+
+
+def split_for_speech(text, limit=MAX_PIECE_CHARACTERS):
+    """Split text into pieces of at most `limit` characters, at natural breaks.
+
+    Text within the limit comes back unchanged, as one piece - so every
+    short announcement is sent exactly as before. Longer text is broken at
+    the best break available (see _BREAKS), then the parts are packed back
+    together, in order, into as few pieces as fit. A word is only cut in
+    the middle if it is longer than the limit on its own.
+    """
+    if len(text) <= limit:
+        return [text]
+
+    def units(part, level):
+        if len(part) <= limit:
+            return [part]
+        if level == len(_BREAKS):
+            return [part[i:i + limit] for i in range(0, len(part), limit)]
+        found = []
+        for sub in re.split(_BREAKS[level], part):
+            if sub:
+                found.extend(units(sub, level + 1))
+        return found
+
+    pieces = []
+    for unit in units(" ".join(text.split()), 0):
+        if pieces and len(pieces[-1]) + 1 + len(unit) <= limit:
+            pieces[-1] += " " + unit
+        else:
+            pieces.append(unit)
+    return pieces
+
+
+class OnlineVoiceError(Exception):
+    """The online voice failed while speaking a text.
+
+    `unspoken` is the part the user has not heard yet, so the offline voice
+    can say just that, instead of repeating a long reading from the start.
+    The message is the original error's, so the terminal shows the same
+    line as before and failure_reason() still recognises network errors.
+    """
+
+    def __init__(self, error, unspoken):
+        super().__init__(str(error))
+        self.unspoken = unspoken
 
 
 class Speaker:
@@ -219,7 +286,10 @@ class Speaker:
                     # voice rather than lose it - on the FIRST failure,
                     # since the user may have asked for this announcement.
                     self._online_failures += 1
-                    spoken = self._rescue_with_offline_voice(text)
+                    # Only the part not yet heard: a long reading that
+                    # failed halfway is not repeated from the start
+                    spoken = self._rescue_with_offline_voice(
+                        getattr(error, "unspoken", text))
 
                     # Twice in a row is a dead network rather than a blip:
                     # stay offline, so later announcements are not delayed
@@ -295,6 +365,24 @@ class Speaker:
     # -----------------------------------------------------------------
 
     def _speak_online(self, text):
+        """Speak text with the online voice, one piece at a time.
+
+        Short text is a single piece, spoken exactly as before. If a piece
+        fails, the error carries the part not yet spoken (see
+        OnlineVoiceError). If the user interrupts, the rest is dropped,
+        just as a single long announcement was cut off before.
+        """
+        pieces = split_for_speech(text)
+        for number, piece in enumerate(pieces):
+            if self._interrupt.is_set() or self._stopping.is_set():
+                return
+            try:
+                self._speak_piece_online(piece)
+            except Exception as error:
+                raise OnlineVoiceError(error,
+                                       " ".join(pieces[number:])) from error
+
+    def _speak_piece_online(self, text):
         """Generate an audio file with edge-tts, then play it."""
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
             temp_path = temp_file.name
