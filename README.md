@@ -1,6 +1,6 @@
 # Guide 
 
-A software-first AI accessibility assistant for blind and visually impaired users. Point a camera at the world and hear what is there: the objects around you, the text on labels, signs and packaging, and answers to your own questions about what the camera sees, in English or Hindi.
+A software-first AI accessibility assistant for blind and visually impaired users. Point a camera at the world and hear what is there: the objects around you, the text and answers to your own questions about what the camera sees, in English or Hindi.
 
 Built as a first major end-to-end machine learning project, with an emphasis on honest evaluation: documented failures, measured results, and the reasoning behind every decision.
 
