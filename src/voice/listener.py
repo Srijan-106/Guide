@@ -263,7 +263,7 @@ COMMANDS = {
         ("reading_mode",     ["पढ़ने का मोड", "पढ़ने वाला मोड", "रीडिंग मोड"]),
         ("ambient_mode",     ["देखने का मोड", "देखने वाला मोड", "एम्बिएंट"]),
         ("identify",         ["यह क्या है", "ये क्या है", "क्या है यह", "क्या है ये",
-                              "पहचानो", "पहचान"]),
+                              "पहचानो", "पहचानिए", "पहचान"]),
         # "आसपास का" added 7 October: Whisper heard "आसपास क्या दिख रहा है"
         # as "आस पास का दिख रहा है" - "क्या" shortened to "का"
         ("describe",         ["क्या दिख रहा", "आसपास क्या", "आसपास का",
@@ -281,14 +281,23 @@ def match_command(text, language="en"):
     Matching is by keyword rather than exact phrase: "can you read this
     please" contains "read" and so matches. Both the spoken text and the
     keywords are normalised, so spelling variants still match.
+
+    WHOLE WORDS ONLY (22 October). A keyword used to match inside another
+    word: "which hand am I raising", heard as "...reading", contained
+    "read" and switched to Reading mode - twice in one session - and "is
+    the door closed?" contained "close", which quits the application. A
+    keyword now matches only as whole words, so "reading" no longer
+    contains "read". Hindi forms that were matched as part of a longer
+    word are listed in full instead ("पहचानिए").
     """
     if not text:
         return None
 
-    spoken = normalise(text)
+    # Spaces at both ends, so " read " is found only as a whole word
+    spoken = f" {normalise(text)} "
 
     for name, phrases in COMMANDS.get(language, COMMANDS["en"]):
-        if any(normalise(phrase) in spoken for phrase in phrases):
+        if any(f" {normalise(phrase)} " in spoken for phrase in phrases):
             return name
 
     return None
