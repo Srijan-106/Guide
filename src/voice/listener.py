@@ -48,6 +48,12 @@ MIN_SECONDS = 0.4
 # command phrase the user is likely to say, and only one example question,
 # with no specific object in it. (The English prompt scored 7/7 in the
 # same tests and is unchanged.)
+#
+# A colour question was added on 22 October. In 20 test sentences
+# (src/evaluation/check_hindi_hearing.py), "किस रंग की" was misheard all
+# four times it was said - as "की सरंका", "रहंका" and twice "रन्की" -
+# while the other sentences were heard correctly. It has no object in it,
+# for the reason above.
 VOCABULARY_PROMPTS = {
     "en": (
         "Commands: read this, what is this, identify, describe, repeat, "
@@ -57,7 +63,7 @@ VOCABULARY_PROMPTS = {
     "hi": (
         "कमांड: पढ़ो, यह क्या है, पहचानो, आसपास क्या दिख रहा है, "
         "फिर से बोलो, दोबारा, पढ़ने का मोड, देखने का मोड, इंग्लिश, "
-        "बंद करो। सवाल जैसे: मैंने क्या पहना है।"
+        "बंद करो। सवाल जैसे: मैंने क्या पहना है, यह किस रंग की है।"
     ),
 }
 
