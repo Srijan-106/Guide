@@ -18,6 +18,7 @@ What it does, in order:
        speech recognition   Whisper "small"         about 460 MB
        Hindi translation    NLLB-200 (600M)         about 2.4 GB   optional
        visual questions     qwen3-vl via Ollama     about 3.3 GB   optional
+       hand sides           MediaPipe hand model    about 8 MB     optional
   5. REPORTS which features are ready, and how to start the app.
 
 Each optional feature is downloaded on its own: if one fails, the rest
@@ -99,7 +100,14 @@ DETECTION_MODEL = Path("models/yolo26m-objv1-150.pt")
 #       open.
 #   python-bidi - blocked by Windows Smart App Control on the development
 #       machine (Day 10). The app uses its own stand-in in src/bidi.
-UNWANTED_PACKAGES = ["opencv-python-headless", "python-bidi"]
+#   opencv-python - asked for by ultralytics. The project uses
+#       opencv-contrib-python instead, which MediaPipe requires: the same
+#       OpenCV with extra modules, in the same cv2 folder. Two OpenCV
+#       packages there overwrite each other's files (22 October).
+UNWANTED_PACKAGES = ["opencv-python-headless", "opencv-python", "python-bidi"]
+
+# The one OpenCV package the project keeps - see UNWANTED_PACKAGES
+OPENCV_PACKAGE = "opencv-contrib-python"
 
 VENV_DIR = Path(".venv")
 
@@ -352,15 +360,15 @@ def remove_unwanted_packages():
     # Everything needed to put OpenCV back is worked out BEFORE anything is
     # removed. On 8 October the version was looked up after the removal,
     # the lookup crashed, and OpenCV was left missing entirely.
-    version = pinned_version("opencv-python")
-    package = f"opencv-python=={version}" if version else "opencv-python"
+    version = pinned_version(OPENCV_PACKAGE)
+    package = f"{OPENCV_PACKAGE}=={version}" if version else OPENCV_PACKAGE
     reinstall = pip + ["install", "--force-reinstall", "--no-deps", package]
 
     # Not installed is fine: pip just says it is skipping them
     run(pip + ["uninstall", "-y"] + UNWANTED_PACKAGES)
 
-    # Removing the headless build also deletes files in the cv2 folder it
-    # shares with the full build, so the full build is put back over it
+    # Removing the other builds also deletes files in the cv2 folder they
+    # share with the contrib build, so the contrib build is put back over it
     if run(reinstall):
         return True
 
@@ -438,6 +446,26 @@ def download_hindi_model():
         "AutoModelForSeq2SeqLM.from_pretrained(MODEL)",
         "Hindi translation (NLLB-200, about 2.4 GB - this takes a while)")
     return ok
+
+
+def download_hand_model():
+    """MediaPipe's hand model, then a check that it loads."""
+    downloaded, _ = run_python(
+        "import os, sys, urllib.request; sys.path.insert(0, 'src');"
+        "from vision.hands import MODEL_PATH, MODEL_URL;"
+        "part = MODEL_PATH + '.part';"
+        "os.path.exists(MODEL_PATH) or ("
+        "urllib.request.urlretrieve(MODEL_URL, part),"
+        " os.replace(part, MODEL_PATH))",
+        "Hand sides (MediaPipe hand model, about 8 MB)")
+    if not downloaded:
+        return False
+    loads, _ = run_python(
+        "import sys; sys.path.insert(0, 'src');"
+        "from vision.hands import HandSides;"
+        "sys.exit(0 if HandSides().available else 1)",
+        "Hand sides: checking the model loads")
+    return loads
 
 
 def download_vision_model():
@@ -555,6 +583,7 @@ def main():
     reading_ok, voice_ok = download_core_models()
     hindi_ok = download_hindi_model() if want_hindi else False
     vision_ok = download_vision_model() if ollama_found else False
+    hands_ok = download_hand_model()
 
     report([
         ("Object detection", True),
@@ -562,6 +591,7 @@ def main():
         ("Voice commands (V key)", voice_ok),
         ("Hindi answers" + ("" if want_hindi else " (skipped)"), hindi_ok),
         ("Visual questions" + ("" if want_vision else " (skipped)"), vision_ok),
+        ("Hand sides (left or right hand)", hands_ok),
     ])
     return 0 if reading_ok else 1
 

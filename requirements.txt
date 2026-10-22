@@ -42,8 +42,13 @@
 # Object detection (YOLO)
 ultralytics==8.4.155
 
-# Camera capture, image handling, display windows
-opencv-python==5.0.0.93
+# Camera capture, image handling, display windows.
+# The "contrib" build: the same OpenCV with extra modules, which MediaPipe
+# (below) requires. Only ONE OpenCV package may be installed - they all
+# install into the same cv2 folder and overwrite each other - so NOT
+# opencv-python as well. ultralytics and easyocr ask for opencv-python and
+# opencv-python-headless; setup.py removes both after installing.
+opencv-contrib-python==5.0.0.93
 
 # Optical Character Recognition - reading text from images
 easyocr==1.7.2
@@ -99,6 +104,15 @@ openai-whisper==20250625
 
 # Microphone input
 sounddevice==0.5.6
+
+
+# ===== Optional: which hand, left or right ============================
+# The app still runs without these; a hand is then given no side.
+
+# MediaPipe's hand model tells the user's left hand from their right - the
+# vision model cannot. It also needs its model file, about 8 MB, which
+# setup.py downloads to models/hand_landmarker.task.
+mediapipe==1.1.1
 
 
 # ===== Optional: visual questions =====================================

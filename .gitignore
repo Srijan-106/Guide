@@ -11,3 +11,7 @@ runs/
 # Voice samples made while choosing the voices. The app's own speech
 # files are created in Windows' temp folder, never here.
 *.mp3
+
+# MediaPipe's hand model: downloaded by setup.py, not kept in the
+# repository (the detection model in models/ is the only one that is)
+models/hand_landmarker.task
