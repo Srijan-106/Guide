@@ -6,53 +6,52 @@
 
 <h1 align="center">Guide</h1>
 
-A software-first AI accessibility assistant for blind and visually impaired users. Point a camera at the world and hear what is there: the objects around you, the text and answers to your own questions about what the camera sees, in English or Hindi.
+Guide is a camera assistant for blind and visually impaired people. Point your laptop camera at the world around you and Guide tells you what is there, out loud: the objects near you, the words on a label or page, and answers to questions like "what am I wearing?" or "where is my bag?". It works in English and Hindi.
 
-Built as a first major end-to-end machine learning project, with an emphasis on honest evaluation: documented failures, measured results, and the reasoning behind every decision.
+This is my first complete machine learning project. I have tried to keep it honest: every test, every mistake and every decision is written down in this repository, including the things that did not work.
 
-Everything runs on the laptop except the natural voice. **Camera images never leave the machine**; only the text to be spoken is sent to the online voice service, and without internet the Windows voice is used instead.
+Nearly everything happens on your own laptop, and your camera pictures never leave it. The one exception is the natural voice. Only the words to be spoken are sent to an online voice service. With no internet, Guide simply uses the Windows voice instead.
 
----
+## What Guide can do
 
-## What it does
+- **Tell you what is around you.** It recognises 365 kinds of everyday objects and says their names as they come into view.
+- **Read text aloud.** Labels, pages and signs are read in the right order, with common misreadings fixed.
+- **Describe the whole scene.** Ask at any time for everything that is in view.
+- **Identify what you are holding.** Hold something up and Guide names it and reads the words on it.
+- **Answer your questions.** Ask anything about what the camera sees, such as "what colour is my shirt?" or "is there a dog in the room?". Guide answers using a model that runs on the laptop, and tells you left and right from your own point of view.
+- **Listen and speak in English or Hindi.** Press a key, then speak. Answers are spoken in the language you choose.
+- **Show captions on screen.** Everything Guide says also appears as text, so a friend or helper can follow along.
+- **Repeat itself.** Missed something? Ask it to say that again.
 
-| Feature | Status |
+## Two modes
+
+| Mode | What it is for |
 |---|---|
-| Real-time object detection (365 object types), announced aloud | Working |
-| Text reading (OCR), in reading order, with careful spelling correction | Working |
-| Spoken summary of everything in view, on demand | Working |
-| Identify a held-up object and read the text on it | Working |
-| Voice commands (push-to-talk), in English and Hindi | Working |
-| Open questions about what the camera sees ("what am I wearing?"), answered by a local vision model | Working |
-| Hindi mode: Hindi voice, Hindi commands, and answers translated into Hindi | Working |
-| Live on-screen captions of everything said, for sighted helpers | Working |
-| Repeat the last thing said | Working |
+| **Ambient** (default) | Knowing what is around you. Guide names objects as they appear. |
+| **Reading** | Reading text. Guide stays quiet about objects, and reads aloud when you press SPACE. |
 
-The application runs in two modes:
+I split these after testing showed that object announcements kept interrupting the reading of text.
 
-- **Ambient mode** (default): announces objects as they appear. Passive awareness: *what is around me?*
-- **Reading mode**: object announcements are silenced; SPACE reads text aloud. Deliberate inquiry: *what does this say?*
+## Hindi mode
 
-Modes exist because testing showed object announcements interrupting text readings, which was confusing in practice.
-
-Hindi mode is **Hinglish** by design: sentences in Hindi, object names in English ("मुझे दिख रहा है: bottle, chair"), which is how most Hindi speakers say them.
+In Hindi mode, Guide speaks in Hindi but keeps object names in English, for example "मुझे दिख रहा है: bottle, chair". This is how most Hindi speakers talk every day.
 
 ## Controls
 
-| Key | Action |
+| Key | What it does |
 |---|---|
-| M | Switch between Ambient and Reading mode |
-| SPACE | Read the text in view (Reading mode): up to 20 words, no object name |
-| D | Describe everything currently visible |
-| I | "What is this?": name the held-up object and read a few words on it |
-| R | Repeat the last thing said |
-| V | Speak: press to start, press again to stop. A command, or any question about what the camera sees |
-| L | Switch language: English / Hindi |
-| Q | Quit |
+| **M** | Switch between Ambient and Reading mode |
+| **SPACE** | Read the text in view aloud (Reading mode), up to 20 words |
+| **D** | Describe everything currently in view |
+| **I** | Name the object you are holding, and read a few words on it |
+| **R** | Repeat the last thing said |
+| **V** | Talk to Guide: press to start, press again to stop |
+| **L** | Switch between English and Hindi |
+| **Q** | Quit |
 
-Voice commands do the same as the keys: "read this", "what is this", "describe", "repeat", "reading mode", "ambient mode", "Hindi", "stop", and their Hindi equivalents ("पढ़ो", "यह क्या है", "आसपास क्या दिख रहा है", "फिर से बोलो" …). Anything that is not a command is treated as a question for the vision model.
+You can also just say what you want. Guide understands "read this", "what is this", "describe", "repeat", "reading mode", "ambient mode", "Hindi" and "stop", and the Hindi versions ("पढ़ो", "यह क्या है", "आसपास क्या दिख रहा है", "फिर से बोलो"). Anything else you say is treated as a question about the camera view.
 
-The video window must be focused (clicked) for keys to register.
+**Tip:** click the video window first, otherwise the keys will not work.
 
 ---
 
