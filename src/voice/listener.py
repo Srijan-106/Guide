@@ -249,6 +249,11 @@ class VoiceListener:
 
 COMMANDS = {
     "en": [
+        # Asking for the language already in use: "English mode" was sent
+        # to the vision model as a question and answered with a scene
+        # description (23 October). Full phrases only, so "is this in
+        # English?" is still a question.
+        ("language_english", ["english mode", "speak english", "speak in english"]),
         ("language_hindi", ["hindi"]),
         ("reading_mode",   ["reading mode", "read mode"]),
         ("ambient_mode",   ["ambient mode", "ambient"]),
@@ -260,6 +265,7 @@ COMMANDS = {
     ],
     "hi": [
         ("language_english", ["इंग्लिश", "अंग्रेजी", "अंग्रेज़ी", "english"]),
+        ("language_hindi",   ["हिंदी मोड", "हिन्दी मोड", "hindi mode"]),
         ("reading_mode",     ["पढ़ने का मोड", "पढ़ने वाला मोड", "रीडिंग मोड"]),
         ("ambient_mode",     ["देखने का मोड", "देखने वाला मोड", "एम्बिएंट"]),
         ("identify",         ["यह क्या है", "ये क्या है", "क्या है यह", "क्या है ये",
