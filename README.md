@@ -7,6 +7,7 @@
 <h1 align="center">Guide</h1>
 
 <p align="center"><i>A camera assistant for blind and visually impaired people</i></p>
+
 **Guide helps blind and visually impaired people understand the world around them.**
 
 Imagine pointing a camera at your room and hearing what is there. Guide does exactly that. It tells you which objects are around you, reads the words on a label or a page, and answers your own spoken questions, like *"What am I wearing?"* or *"Where is my bag?"*, in English or Hindi.
