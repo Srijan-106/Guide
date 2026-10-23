@@ -1,4 +1,9 @@
-**Demo:** [Watch the demo](https://github.com/Srijan-106/Guide/releases/download/v1.0/Demo.mp4)
+<div align="right">
+  <a href="https://github.com/Srijan-106/Guide/releases/download/v1.0/Demo.mp4"><b>Demo ▶</b></a>
+</div>
+
+<hr>
+
 <h1 align="center">Guide</h1>
 
 A software-first AI accessibility assistant for blind and visually impaired users. Point a camera at the world and hear what is there: the objects around you, the text and answers to your own questions about what the camera sees, in English or Hindi.
