@@ -1,5 +1,5 @@
 <div align="right">
-  <a href="https://github.com/Srijan-106/Guide/releases/download/v1.0/Demo.mp4"><b>Demo ▶</b></a>
+  <h2><a href="https://github.com/Srijan-106/Guide/releases/download/v1.0/Demo.mp4"><b>Demo ▶</b></a></h2>
 </div>
 
 <hr>
