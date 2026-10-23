@@ -10,11 +10,13 @@
 
 **Guide helps blind and visually impaired people understand the world around them.**
 
-Imagine pointing a camera at your room and hearing what is there. Guide does exactly that. It tells you which objects are around you, reads the words, and answers your own spoken questions, like *"What am I wearing?"* or *"Where is my bag?"*, *"What is around me?"*, in English or Hindi.
+The idea behind Guide is a pair of AI-powered smart glasses that tell a blind or visually impaired person what is around them, hands-free. Building the glasses themselves needs specialised hardware, so this project focuses on the part that is software: the system that sees, reads, listens and speaks, built and tested on a laptop and webcam.
 
-It runs on a laptop with a webcam, and your camera pictures stay on your own computer. Only the words to be spoken go online, and if there is no internet, Guide keeps working with a built-in voice (offline).
+Point the camera at your room and hear what is there. Guide names the objects around you, reads the text in front of you, and answers your own spoken questions, such as *"What am I wearing?"*, *"Where is my bag?"* or *"What is around me?"*, in English or Hindi.
 
-I built Guide on my own as a complete project, from the idea and research to the working program, the testing and the documentation. I tested it on 117 real-life situations. For example, when asked about something that was not in the room, it correctly said there was nothing there, 4 out of 4 times, instead of making up an answer.
+Your camera pictures stay on your own computer. Only the words to be spoken go online, and if there is no internet, Guide keeps working with a built-in offline voice.
+
+I built Guide on my own as a complete project, from the idea and research to the working program, the testing and the documentation. I tested it with 117 tests. When asked about something that was not in the room, it correctly said there was nothing there, 4 out of 4 times, instead of making up an answer.
 
 ## Features
 
