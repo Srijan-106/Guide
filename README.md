@@ -7,6 +7,10 @@ Built as a first major end-to-end machine learning project, with an emphasis on 
 Everything runs on the laptop except the natural voice. **Camera images never leave the machine**; only the text to be spoken is sent to the online voice service, and without internet the Windows voice is used instead.
 
 ---
+## Demo
+
+[Watch the demo (4 min, 22 MB)](https://github.com/Srijan-106/Guide/releases/download/v1.0/Demo.mp4)
+
 
 ## What it does
 
