@@ -9,7 +9,7 @@ Everything runs on the laptop except the natural voice. **Camera images never le
 ---
 ## Demo
 
-[Watch the demo (4 min, 22 MB)](https://github.com/Srijan-106/Guide/releases/download/v1.0/Demo.mp4)
+[Watch the demo](https://github.com/Srijan-106/Guide/releases/download/v1.0/Demo.mp4)
 
 
 ## What it does
