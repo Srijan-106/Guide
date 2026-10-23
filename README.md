@@ -7,10 +7,13 @@
 <h1 align="center">Guide</h1>
 
 <p align="center"><i>A camera assistant for blind and visually impaired people</i></p>
+**Guide helps blind and visually impaired people understand the world around them.**
 
-Guide tells you what is in front of you, out loud. Point a laptop camera at your surroundings and Guide names the objects around you, reads the text on labels and pages, and answers your own questions about what the camera sees, such as "what am I wearing?" or "where is my bag?". It works in English and Hindi.
+Imagine pointing a camera at your room and hearing what is there. Guide does exactly that. It tells you which objects are around you, reads the words on a label or a page, and answers your own spoken questions, like *"What am I wearing?"* or *"Where is my bag?"*, in English or Hindi.
 
-Detection, text reading, speech recognition and visual questions all run on your own laptop, and camera pictures never leave it. Only the words to be spoken are sent to an online voice service. Without internet, Guide switches to the built-in Windows voice.
+It runs on an ordinary laptop with a webcam, and your camera pictures stay on your own computer. Only the words to be spoken go online, and if there is no internet, Guide keeps working with a built-in voice.
+
+I built Guide on my own as a complete project, from the idea and research to the working program, the testing and the documentation. I tested it on 117 real-life situations. For example, when asked about something that was not in the room, it correctly said there was nothing there, 4 out of 4 times, instead of making up an answer.
 
 ## Features
 
