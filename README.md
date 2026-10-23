@@ -10,9 +10,9 @@
 
 **Guide helps blind and visually impaired people understand the world around them.**
 
-Imagine pointing a camera at your room and hearing what is there. Guide does exactly that. It tells you which objects are around you, reads the words on a label or a page, and answers your own spoken questions, like *"What am I wearing?"* or *"Where is my bag?"*, in English or Hindi.
+Imagine pointing a camera at your room and hearing what is there. Guide does exactly that. It tells you which objects are around you, reads the words, and answers your own spoken questions, like *"What am I wearing?"* or *"Where is my bag?"*, *"What is around me?"*, in English or Hindi.
 
-It runs on an ordinary laptop with a webcam, and your camera pictures stay on your own computer. Only the words to be spoken go online, and if there is no internet, Guide keeps working with a built-in voice.
+It runs on an ordinary laptop with a webcam, and your camera pictures stay on your own computer. Only the words to be spoken go online, and if there is no internet, Guide keeps working with a built-in voice (offline).
 
 I built Guide on my own as a complete project, from the idea and research to the working program, the testing and the documentation. I tested it on 117 real-life situations. For example, when asked about something that was not in the room, it correctly said there was nothing there, 4 out of 4 times, instead of making up an answer.
 
