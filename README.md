@@ -1,6 +1,6 @@
-<div align="right">
-  <h2><a href="https://github.com/Srijan-106/Guide/releases/download/v1.0/Demo.mp4"><b>Demo ▶</b></a></h2>
-</div>
+<h2 align="center">🎬 DEMO</h2>
+
+https://github.com/user-attachments/assets/e09bf79f-5e12-42a1-af50-f5497edc1bff
 
 <hr>
 
